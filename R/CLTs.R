@@ -16,6 +16,7 @@ wh_hists_elements <- hist_plot_elements %>%
 
 
 whdat <- readr::read_csv(data_paths[['weights_heights']])
+true_mean <- mean(whdat$height)
 
 ## Show original data. #####
 original_weights_plot <- whdat %>%
@@ -28,11 +29,8 @@ original_weights_plot
 SAMPLE_SIZE <- 3000
 SAMPLES <- 100
 
-MAX <- 1500
-STEP <- 20
-
-max_roll <- 3000
-n_experiments <- 50
+max_roll <- 50
+n_experiments <- 600
 elements_in_sample_vec <- sample(1:max_roll, n_experiments, replace=TRUE)
 number_samples_vec <- sample(1:max_roll, n_experiments, replace=TRUE)
 
@@ -42,7 +40,51 @@ do_experiment <- function(elements_in_sample, number_samples) {
   sample_means <- sample_dats %>% sapply(function(d) mean(d$height))
 }
 
-experiment_means_of_means <- Map(do_experiment, elements_in_sample_vec, number_samples_vec)
+experiments_sample_means <- Map(do_experiment, elements_in_sample_vec, number_samples_vec)
+experiments_means_of_means <- sapply(experiments_sample_means, mean)
+experiment_dat <- tibble::tibble(
+  elements_in_sample = elements_in_sample_vec,
+  number_samples = number_samples_vec,
+  mean_of_sample_means = experiments_means_of_means)
+experiment_dat
+
+## Predict error using # elements and # samples as features. 
+## Look at variable weights.
+
+## Hold one fixed and vary the other, and plot that 2D graph.
+## Actually you could probably derive this partial derivative of the error analytically!
+get_partial_derivatives <- function(fixed_val, fixed_experiment_maker, name) {
+  partial_experiment_function <- fixed_experiment_maker(fixed_val)
+  xs <- 1:max_roll
+  print(length(xs))
+  means_of_means <- sapply(xs, partial_experiment_function)
+  print(length(means_of_means))
+  tibble::tibble(fixed_val = fixed_val, varying_val = xs, mean_of_means = means_of_means,
+                 name = name)
+}
+fix_n_samples <- function(n_samples) {
+  function(n_elements) dplyr::sample_n(whdat, n_elements) %$% mean(height)
+}
+
+get_partial_derivatives(400, fix_n_samples, 'medium fixed samples')
+df <- get_partial_derivatives(400, fix_n_samples, 'medium fixed samples')
+
+df %>%
+  ggplot(aes(x = varying_val, y = abs(mean_of_means - true_mean))) +
+  geom_point() +
+  theme_bw() +
+  out_theme1
+
+
+library(rgl)
+fn <- plot3D::points3D
+fn <- rgl::rgl.points
+rgl.open()
+with(experiment_dat, fn(x = elements_in_sample, y = number_samples, 
+                        z = mean_of_sample_means))
+
+experiment_dat %>%
+  ggplot(aes(x = elements_in_sample))
 
 start_time <- Sys.time()
 sample_dats <- lapply(1:MAX, function(i) whdat %>% dplyr::sample_n(MAX))
