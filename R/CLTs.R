@@ -50,28 +50,61 @@ experiment_dat
 
 ## Predict error using # elements and # samples as features. 
 ## Look at variable weights.
+fix_n_samples <- function(n_samples) {
+  function(n_elements) 
+    sapply(1:n_samples, 
+           function(i) dplyr::sample_n(whdat, n_elements) %$% mean(height))
+}
+fix_n_elements <- function(n_elements) {
+  function(n_samples)
+    dplyr::sample_n(whdat, n_elements) %$% mean(height)
+}
+
 
 ## Hold one fixed and vary the other, and plot that 2D graph.
 ## Actually you could probably derive this partial derivative of the error analytically!
-get_partial_derivatives <- function(fixed_val, fixed_experiment_maker, name) {
-  partial_experiment_function <- fixed_experiment_maker(fixed_val)
-  xs <- 1:max_roll
-  print(length(xs))
-  means_of_means <- sapply(xs, partial_experiment_function)
-  print(length(means_of_means))
-  tibble::tibble(fixed_val = fixed_val, varying_val = xs, mean_of_means = means_of_means,
-                 name = name)
-}
-fix_n_samples <- function(n_samples) {
-  function(n_elements) dplyr::sample_n(whdat, n_elements) %$% mean(height)
+get_partial_derivatives <- function(
+  fixed_n_elements, n_samples_range, name, n_takes_for_variance = 30) {
+  ## one element per sample size we're trying.
+  ## if we do this many times for each # of samples (do it a few times for 1 sample, do it a few times for 2 samples...),
+  ## then take the variances, we'll have the partial derivative of variance w.r.t. the # of samples.
+  avg_variances_in_mean_estimation <- sapply(
+    n_samples_range, ## for each size in the range of number-of-samples
+    function(i) {
+      mean_of_means_of_sample_means <- sapply(
+        1:n_takes_for_variance, ## for all the takes we want to estimate our variance
+        function(take_j) {
+          mean_of_sample_means <- sapply(
+            n_samples_range, ## for every sample we're going to do
+            function (n_samples) {
+              ## for every sample
+              sample_means <- sapply(1:n_samples, 
+                     function(k) {
+                       sample <- dplyr::sample_n(whdat, fixed_n_elements) %$% height
+                       mean(sample) ## sample mean
+               })
+              mean(sample_means) ## mean of sample means
+            })
+          mean(mean_of_sample_means) ## variance of different mean of sample means
+        })
+      var(mean_of_means_of_sample_means)
+    })
+  tibble::tibble(name, n_samples_range, avg_variances_in_mean_estimation)
 }
 
-get_partial_derivatives(400, fix_n_samples, 'medium fixed samples')
-df <- get_partial_derivatives(400, fix_n_samples, 'medium fixed samples')
+df <- get_partial_derivatives(30, 1:20, 'medium fixed samples')
+
+df %<>% mutate(error = mean_of_means - true_mean)
 
 df %>%
-  ggplot(aes(x = varying_val, y = abs(mean_of_means - true_mean))) +
+  ggplot(aes(x = n_samples_range, y = avg_variances_in_mean_estimation)) +
   geom_point() +
+  theme_bw() +
+  out_theme1
+
+df %>%
+  ggplot(aes(x = error)) +
+  geom_histogram(bins = 60) +
   theme_bw() +
   out_theme1
 
