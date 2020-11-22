@@ -23,44 +23,57 @@ make_shape <- function(steps, start, stop, shape_fn) {
 
 normalize <- function(x) x / sum(x)
 
+TYPE <- "circular"
 #' Puts f, g, and convolve(f, g) into a long tibble.
 convolve_and_entibble <- function(steps, f, g, name) {
-  conv <- convolve(f, g) 
   ft <- tibble::tibble(name, side = ' ', x = steps, y = f)
   gt <- tibble::tibble(name, side = '*', x = steps, y = g)
-  conv <- convolve(f, g, type = 'circular')
-  ct <- tibble::tibble(name, side = '=', x = steps, 
-                       y = conv)
+  conv <- convolve(f, g, type = TYPE)
+  ## pad steps vector
+  step_size <- steps[2] - steps[1]
+  target_len <- length(conv)
+  diff <- target_len - length(steps)
+  halfdiff <- diff %/% 2
+  #leftmost <- min(steps)
+  #rightmost <- max(steps)
+  #lpad <- seq(from = leftmost - step_size * halfdiff + step_size, to = leftmost, by = step_size)
+  #rpad <- seq(from = rightmost, to = rightmost + step_size * halfdiff - step_size, by = step_size)
+  #padded_steps <- c(lpad, steps, rpad)
+  #print(length(conv))
+  #print(length(padded_steps))
+  ct <- tibble::tibble(name, side = '=', x = steps, y = conv)
   dplyr::bind_rows(ft, gt, ct)
 }
 
 post_shaper <- function(x) 4
-f1 <- make_shape(steps, -0.5, 0, post_shaper) %>% normalize()
-g1 <- make_shape(steps, 1, 1.5, post_shaper) %>% normalize()
+steps1 <- steps
+f1 <- make_shape(steps1, -0.5, 0, post_shaper) %>% normalize()
+g1 <- make_shape(steps1, 1, 1.5, post_shaper) %>% normalize()
 name1 <- "uniform * uniform"
-df1 <- convolve_and_entibble(steps, f1, g1, name1)
+df1 <- convolve_and_entibble(steps1, f1, g1, name1)
 
+steps2 <- steps1
 f2 <- f1 %>% normalize()
 g2 <- convolve(f1, g1) %>% normalize()
 name2 <- "uniform * (uniform * uniform)"
-df2 <- convolve_and_entibble(steps, f2, g2, name2)
+df2 <- convolve_and_entibble(steps2, f2, g2, name2)
 
-gsteps <- seq(from = 0, to = 20, by = STEP * 20)
-f3 <- dgamma(gsteps, 7.5, 1) %>% normalize()
-g3 <- dgamma(gsteps, 2, 2) %>% normalize()
+steps3 <- seq(from = 0, to = 20, by = STEP * 20)
+f3 <- dgamma(steps3, 7.5, 1) %>% normalize()
+g3 <- dgamma(steps3, 2, 2) %>% normalize()
 name3 <- "gamma * gamma"
-df3 <- convolve_and_entibble(gsteps, f3, g3, name3)
+df3 <- convolve_and_entibble(steps3, f3, g3, name3)
 
-bsteps <- seq(from = 0, to = 1, by = STEP)
-f4 <- dbeta(bsteps, 2, 9) %>% normalize()
-g4 <- dbeta(bsteps, 9, 2) %>% normalize()
+steps4 <- seq(from = 0, to = 1, by = STEP)
+f4 <- dbeta(steps4, 2, 9) %>% normalize()
+g4 <- dbeta(steps4, 9, 2) %>% normalize()
 name4 <- "beta * beta"
-df4 <- convolve_and_entibble(bsteps, f4, g4, name4)
+df4 <- convolve_and_entibble(steps4, f4, g4, name4)
 
 name5 <- "bimodal * bimodal"
-bisteps <- seq(from = -10, to = 30, by = STEP * 40)
-f5 <- normalize(make_shape(bisteps, 16, 18, post_shaper) + 
-                make_shape(gsteps, 7, 10, post_shaper))
+steps5 <- seq(from = -10, to = 30, by = STEP * 40)
+f5 <- normalize(make_shape(steps5, 16, 18, post_shaper) + 
+                make_shape(steps5, 7, 10, post_shaper))
 g5 <- normalize(f4 + g4)
 df5 <- convolve_and_entibble(bisteps, f5, g5, name5)
 
@@ -68,7 +81,7 @@ df5 <- convolve_and_entibble(bisteps, f5, g5, name5)
 plot_convolutions <- function(dat) {
   dat %>%
     ggplot(aes(x = x, y = y, group = side, color = side)) +
-    facet_wrap(~side, ncol = 1, scales = 'free') +
+    facet_wrap(~side, ncol = 1) +
     scale_color_manual(values = c(' ' = 'blue', '*' = 'red', '=' = 'black')) +
     geom_line(size = 1.05) +
     theme_bw() +
