@@ -9,8 +9,8 @@ library(patchwork)
 ## Plot convolutions  #########################################################
 ###############################################################################
 STEP <- 0.001
-FROM = -4
-TO = 4
+FROM = -10
+TO = 10
 steps <- seq(from = FROM, to = TO, by = STEP)
 
 #' Makes a shape along the range FROM to TO, that's 0 everywhere
@@ -28,7 +28,8 @@ TYPE <- "circular"
 convolve_and_entibble <- function(steps, f, g, name) {
   ft <- tibble::tibble(name, side = ' ', x = steps, y = f)
   gt <- tibble::tibble(name, side = '*', x = steps, y = g)
-  conv <- convolve(f, g, type = TYPE)
+  conv <- convolve(f, g, type = TYPE, conj = FALSE)
+  #conv <- pracma::conv(f, g)
   ## pad steps vector
   step_size <- steps[2] - steps[1]
   target_len <- length(conv)
@@ -41,16 +42,96 @@ convolve_and_entibble <- function(steps, f, g, name) {
   #padded_steps <- c(lpad, steps, rpad)
   #print(length(conv))
   #print(length(padded_steps))
+  target_mean <- sum(steps * f) + sum(steps * g)
+  print(sum(steps * conv))
+  conv <- conv - sum(steps * conv)
+  print(sum(steps * conv))
+  conv <- conv + target_mean
+  print(sum(steps * conv))
   ct <- tibble::tibble(name, side = '=', x = steps, y = conv)
   dplyr::bind_rows(ft, gt, ct)
 }
 
+make_shape_xi <- function(start, stop, shape_fn) {
+  fn <- function(x) {
+    if (dplyr::between(x, start, stop)) shape_fn(x) else 0
+  }
+  fn
+}
+
 post_shaper <- function(x) 4
 steps1 <- steps
-f1 <- make_shape(steps1, -0.5, 0, post_shaper) %>% normalize()
-g1 <- make_shape(steps1, 1, 1.5, post_shaper) %>% normalize()
+lower1 <- min(steps1)
+upper1 <- max(steps1)
+f1 <- make_shape(steps1, 0, 1, post_shaper) %>% normalize()
+g1 <- f1#make_shape(steps1, 1, 1.5, post_shaper) %>% normalize()
+
+#f1i <- Vectorize(function(x) ifelse(x >= -0.5 & x <= 0, 4, 0))
+#g1i <- Vectorize(function(x) ifelse(x >= 1 & x <= 1.5, 4, 0))
+
+#get_integral_body <- function(x, f, g) {
+#  function(y) {
+#    f(y) * g(x - y)
+#  }
+#}
+
+#get_integral1 <- function(x) get_integral(
+#  f = f1i, g = g1i, lower = lower1, upper = upper1)
+#c1 <- sapply(steps1, function(x) get_integral(x = x, f = f1i, g = g1i, 
+#                                              lower = lower1, upper = upper1))
+#convolution1 <- steps %>%
+#  lapply(function(x) get_integral_body(x, f1i, g1i)) %>%
+#  sapply(function(fn) pracma::quad(fn, lower1, upper1))
+#plot(steps1, convolution1)
+
+#cc1 <- convolve(f1, g1, type = "open")
+#plotc(c1)
 name1 <- "uniform * uniform"
 df1 <- convolve_and_entibble(steps1, f1, g1, name1)
+#plot(pracma::conv(f1, g1))
+plot_convolutions(df1)
+
+myconv <- function(x, y) {
+  lx <- length(x)
+  ly <- length(y)
+  n <-  lx +  ly - 1
+  lpad <- n - lx
+  rpad <- n - ly
+  z <- fft(fft(c(x, rep(0, lpad))) * fft(c(y, rep(0, rpad))),
+           inverse = TRUE) / n
+  if (is.numeric(x) && is.numeric(y))
+    z <- Re(z)
+  ## remove padding
+  z
+  #slice <- 1:(length(z) - rpad)
+  #print(slice)
+  #z[slice]
+}
+
+convo <- function(x, f, g) {
+  fog = 0
+  xt = min(steps1)
+  xend <- max(steps1)
+  dx = step_size
+  while (xt < xend) {
+    fog = fog + f(xt)*g(x-xt)*dx
+    xt = xt + dx
+  }
+  fog
+}
+
+ccc <- convolve(f1, g1, conj = FALSE, type = "open")
+ccc <- sapply(steps1, function(x) convo(x, f1i, g1i))
+step_size <- (steps[2] - steps[1])
+cstart <- steps1[1] + steps1[1] ## first point for p1 + first point for p2
+cend <- cstart + (length(f1) + length(g1) - 2) * step_size
+cseq <- seq(from = cstart, to = cend, by = step_size)
+cend - cstart
+max(steps) - min(steps)
+plot(cseq, ccc)
+lines(steps1, f1); lines(steps1, g1)
+
+sum(ccc == 0)
 
 steps2 <- steps1
 f2 <- f1 %>% normalize()
