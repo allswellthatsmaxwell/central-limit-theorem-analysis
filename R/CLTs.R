@@ -27,9 +27,9 @@ shift <- function(x, n) {
   if (n == 0) x else c(tail(x, -n), head(x, n))
 }
 
-iterate_convolutions <- function(times, steps, f, g, name) {
+iterate_convolutions <- function(times, steps, f, g, name, shift_mean = TRUE) {
   times <- times - 1
-  fg_df <- convolve_and_entibble(steps, f, g, name)
+  fg_df <- convolve_and_entibble(steps, f, g, name, shift_mean)
   fg_temp <- fg_df
   name_orig <- "f * g"
   name_temp <- name_orig
@@ -48,10 +48,11 @@ iterate_convolutions <- function(times, steps, f, g, name) {
   l
 }
 
-make_iterated_plots <- function(iterated_dfs) {
+make_iterated_plots <- function(iterated_dfs, plot_additions = list()) {
   iterated_plots <- iterated_dfs %>%
     lapply(plot_convolutions)
-  iterated_plots <- Map(function(p, name) p + ggtitle(name), iterated_plots, names(iterated_plots))
+  iterated_plots <- Map(function(p, name) p + ggtitle(name) + plot_additions, 
+                        iterated_plots, names(iterated_plots))
   iterated_plots %>% 
   {Reduce(`+`, .)} + plot_layout(nrow = 1)
 }
@@ -76,9 +77,20 @@ plot_convolutions <- function(dat) {
           strip.background = element_blank())
 }
 
+shift_convolution <- function(steps, conv, f, g) {
+  step_size <- steps[2] - steps[1]
+  current_mean <- sum(steps * conv)
+  target_mean <- sum(steps * f) + sum(steps * g)
+  distance <- target_mean - current_mean
+  steps_in_distance <- round(distance / step_size)
+  print(distance)
+  print(steps_in_distance)
+  shift(conv, steps_in_distance)
+}
+
 TYPE <- "circular"
 #' Puts f, g, and convolve(f, g) into a long tibble.
-convolve_and_entibble <- function(steps, f, g, name) {
+convolve_and_entibble <- function(steps, f, g, name, shift_mean = TRUE) {
   ft <- tibble::tibble(name, side = ' ', x = steps, y = f)
   gt <- tibble::tibble(name, side = '*', x = steps, y = g)
   conv <- convolve(f, g, type = TYPE, conj = FALSE)
@@ -89,7 +101,9 @@ convolve_and_entibble <- function(steps, f, g, name) {
   steps_in_distance <- round(distance / step_size)
   print(distance)
   print(steps_in_distance)
-  conv <- shift(conv, steps_in_distance)
+  if (shift_mean) {
+    conv <- shift(conv, steps_in_distance)
+  }
   print(glue::glue("{sum(steps * f)} + {sum(steps * g)} = {sum(steps * conv)}"))
   ct <- tibble::tibble(name, side = '=', x = steps, y = conv)
   dplyr::bind_rows(ft, gt, ct)
@@ -145,14 +159,27 @@ df4 <- convolve_and_entibble(steps4, f4, g4, name4)
 
 name5 <- "bimodal * bimodal"
 steps5 <- seq(from = -50, to = 50, by = STEP * 100)
+f5 <- normalize(make_shape(steps5, 13, 20, post_shaper) + 
+                make_shape(steps5, 30, 40, post_shaper))
+g5 <- normalize(make_shape(steps5, -30, -20, post_shaper) + 
+                make_shape(steps5, -11, -8, post_shaper))
 f5 <- normalize(make_shape(steps5, 16, 18, post_shaper) + 
-                make_shape(steps5, 7, 10, post_shaper))
+                  make_shape(steps5, 7, 10, post_shaper))
 g5 <- normalize(make_shape(steps5, 12, 18, post_shaper) + 
-                make_shape(steps5, 4, 8, post_shaper))
+                  make_shape(steps5, 4, 11, post_shaper))
 df5 <- convolve_and_entibble(steps5, f5, g5, name5)
 
-bimodal_iterated_dfs <- iterate_convolutions(5, steps5, f5, g5, name5)
-bimodal_iterated_plots <- bimodal_iterated_dfs %>% make_iterated_plots() 
+steps6 <- seq(from = -4, to = 4, by = STEP)
+f6 <- dcauchy(-1)
+g6 <- dcauchy(3)
+df6 <- convolve_and_entibble(steps6, f6, g6, "cauchy")
+plot_convolutions(df6)
+
+
+bimodal_iterated_dfs <- iterate_convolutions(8, steps5, f5, g5, name5, shift_mean = FALSE)
+bimodal_iterated_plots <- bimodal_iterated_dfs %>% 
+  make_iterated_plots(list(theme(axis.text.x = element_blank(), 
+                                 axis.ticks.x = element_blank())) )
 bimodal_iterated_plots
 
 dfs <- list(df1, df2, df3, df4, df5)
@@ -165,3 +192,45 @@ five_plot <- Reduce(`+`, plots) + plot_layout(nrow = 1)
 ggsave(five_plot, path = '../out', filename = 'five.png',
        dpi = 200, width = 12, height = 8, units = "in")
 
+
+####
+#### Convergence rates for different distribution families.
+####
+
+convolve_n_times <- function(fdict, n) {
+  f <- fdict[["d"]]
+  xs <- fdict[["xs"]]
+  original <- f(xs) %>% normalize()
+  g <- convolve(original, original) 
+  for (i in 1:(n - 1)) {
+    g <- convolve(g, original, conj = FALSE, type = "circular")
+  }
+  g
+}
+
+bundle_n_convolutions <- function(fdict, n) {
+  h <- convolve_n_times(fdict, n)
+  xs <- fdict[["xs"]]
+  hmean <- mean(h)
+  hsd <- sd(h)
+  x_abs_range <- hmean - 5 * hsd
+  new_xs <- seq(from = -x_abs_range, to = x_abs_range, length.out = 1001)
+  print(new_xs)
+  ideal_gaussian <- dnorm(new_xs, hmean, hsd)
+  print(mean(h))
+  print(mean(ideal_gaussian))
+  tibble::tibble(x = xs, h, ideal_gaussian)
+}
+
+N <- 10
+fs <- list("gamma1" = list(d = purrr::partial(dgamma, shape = 7.5, rate = 2),
+                           xs = seq(0, 100, 0.1)))
+
+fs[["gamma1"]][["compare"]] <- bundle_n_convolutions(fs[["gamma1"]], N)
+## how close is h to a gaussian with the same first and second moments?
+
+fs[["gamma1"]][["compare"]] %>%
+  ggplot(aes(x = x)) +
+  #geom_point(aes(y = h)) +
+  geom_point(aes(y = ideal_gaussian)) +
+  theme_bw()
