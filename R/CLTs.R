@@ -77,15 +77,25 @@ plot_convolutions <- function(dat) {
           strip.background = element_blank())
 }
 
-shift_convolution <- function(steps, conv, f, g) {
+shift_convolution2 <- function(conv, steps, f, g) {
+  current_mean <- sum(steps * conv)
+  target_mean <- sum(steps * f) + sum(steps * g)
+  conv / (current_mean / target_mean)
+}
+
+shift_convolution <- function(conv, steps, f, g) {
   step_size <- steps[2] - steps[1]
   current_mean <- sum(steps * conv)
   target_mean <- sum(steps * f) + sum(steps * g)
   distance <- target_mean - current_mean
   steps_in_distance <- round(distance / step_size)
-  print(distance)
-  print(steps_in_distance)
-  shift(conv, steps_in_distance)
+  conv <- shift(conv, steps_in_distance) %>% normalize()
+  rnd <- purrr::partial(round, digits = 3)
+  conv_mean <- sum(steps * conv)
+  print(glue::glue("attempted to move from mean {rnd(current_mean)} to {rnd(target_mean)} \
+(a distance of {rnd(distance)}, with {steps_in_distance} steps); \
+achieved {rnd(conv_mean)}."))
+  conv
 }
 
 TYPE <- "circular"
@@ -94,15 +104,8 @@ convolve_and_entibble <- function(steps, f, g, name, shift_mean = TRUE) {
   ft <- tibble::tibble(name, side = ' ', x = steps, y = f)
   gt <- tibble::tibble(name, side = '*', x = steps, y = g)
   conv <- convolve(f, g, type = TYPE, conj = FALSE)
-  step_size <- steps[2] - steps[1]
-  current_mean <- sum(steps * conv)
-  target_mean <- sum(steps * f) + sum(steps * g)
-  distance <- target_mean - current_mean
-  steps_in_distance <- round(distance / step_size)
-  print(distance)
-  print(steps_in_distance)
   if (shift_mean) {
-    conv <- shift(conv, steps_in_distance)
+    conv %<>% shift_convolution(steps, f, g)
   }
   print(glue::glue("{sum(steps * f)} + {sum(steps * g)} = {sum(steps * conv)}"))
   ct <- tibble::tibble(name, side = '=', x = steps, y = conv)
@@ -198,39 +201,77 @@ ggsave(five_plot, path = '../out', filename = 'five.png',
 ####
 
 convolve_n_times <- function(fdict, n) {
-  f <- fdict[["d"]]
   xs <- fdict[["xs"]]
-  original <- f(xs) %>% normalize()
-  g <- convolve(original, original) 
-  for (i in 1:(n - 1)) {
-    g <- convolve(g, original, conj = FALSE, type = "circular")
+  f <- fdict[["d"]](xs) %>% normalize()
+  g <- f
+  #g <- convolve(f, f, conj = FALSE, type = "circular")
+  #print(sum(xs * g))
+  #g %<>% shift_convolution(xs, f, f)
+  for (i in seq(from = 1, to = n - 1, by = 1)) {
+    print(i)
+    g_prev <- g
+    g <- convolve(g, f, conj = FALSE, type = "circular")
+    #g %<>% shift_convolution(xs, f, g_prev)
   }
   g
 }
 
 bundle_n_convolutions <- function(fdict, n) {
   h <- convolve_n_times(fdict, n)
+  #original_mean <- with(fdict, sum(xs * d(xs)))
+  #print(original_mean)
+  #print(sum(xs * h))
+  #normalizer <- sum(xs * h) / original_mean
+  #print(normalizer)
+  #h <- h / normalizer  ## set mean(h) to original_mean
+  hmean <- sum(xs * h)
+  hsd <- sum(xs^2 * h)
+  
   xs <- fdict[["xs"]]
-  hmean <- mean(h)
-  hsd <- sd(h)
   x_abs_range <- hmean - 5 * hsd
-  new_xs <- seq(from = -x_abs_range, to = x_abs_range, length.out = 1001)
-  print(new_xs)
-  ideal_gaussian <- dnorm(new_xs, hmean, hsd)
+  new_xs <- xs#seq(from = -x_abs_range, to = x_abs_range, length.out = length(xs))
+  #print(new_xs)
+  
+  #ideal_gaussian <- dnorm(new_xs, hmean, hsd)
+  ideal_gaussian <- dnorm(new_xs, mean(h), sd(h))
   print(mean(h))
   print(mean(ideal_gaussian))
-  tibble::tibble(x = xs, h, ideal_gaussian)
+  
+  tibble::tibble(x = new_xs, h, ideal_gaussian)
 }
 
-N <- 10
-fs <- list("gamma1" = list(d = purrr::partial(dgamma, shape = 7.5, rate = 2),
-                           xs = seq(0, 100, 0.1)))
 
+N <- 20
+fs <- list("gamma1" = list(
+  d = function(xs) dgamma(xs, shape = 2, scale = 1) %>% normalize(),
+  xs = seq(0, 100, 0.01)))
 fs[["gamma1"]][["compare"]] <- bundle_n_convolutions(fs[["gamma1"]], N)
 ## how close is h to a gaussian with the same first and second moments?
 
 fs[["gamma1"]][["compare"]] %>%
   ggplot(aes(x = x)) +
-  #geom_point(aes(y = h)) +
-  geom_point(aes(y = ideal_gaussian)) +
+  geom_point(aes(y = h)) +
+  #geom_point(aes(y = ideal_gaussian)) +
   theme_bw()
+
+
+
+
+d <- fs[["gamma1"]][["d"]]
+xs <- fs[["gamma1"]][["xs"]]
+
+d(xs)
+
+
+sum(xs * d(xs))
+plot(xs, d(xs))
+
+r <- convolve_n_times(fs[["gamma1"]], N)
+
+sum(xs * r)
+
+
+
+
+
+
