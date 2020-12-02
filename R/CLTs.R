@@ -204,55 +204,43 @@ convolve_n_times <- function(fdict, n) {
   xs <- fdict[["xs"]]
   f <- fdict[["d"]](xs) %>% normalize()
   g <- f
-  #g <- convolve(f, f, conj = FALSE, type = "circular")
-  #print(sum(xs * g))
-  #g %<>% shift_convolution(xs, f, f)
   for (i in seq(from = 1, to = n - 1, by = 1)) {
-    print(i)
     g_prev <- g
     g <- convolve(g, f, conj = FALSE, type = "circular")
-    #g %<>% shift_convolution(xs, f, g_prev)
   }
   g
 }
 
 bundle_n_convolutions <- function(fdict, n) {
   h <- convolve_n_times(fdict, n)
-  #original_mean <- with(fdict, sum(xs * d(xs)))
-  #print(original_mean)
-  #print(sum(xs * h))
-  #normalizer <- sum(xs * h) / original_mean
-  #print(normalizer)
-  #h <- h / normalizer  ## set mean(h) to original_mean
   hmean <- sum(xs * h)
-  hsd <- sum(xs^2 * h)
+  hsd <- sqrt(sum(((xs - hmean)^2) * h))
   
   xs <- fdict[["xs"]]
-  x_abs_range <- hmean - 5 * hsd
-  new_xs <- xs#seq(from = -x_abs_range, to = x_abs_range, length.out = length(xs))
-  #print(new_xs)
-  
-  #ideal_gaussian <- dnorm(new_xs, hmean, hsd)
-  ideal_gaussian <- dnorm(new_xs, mean(h), sd(h))
+  # ideal_gaussian <- dnorm(xs, mean(h), sd(h))
+  ideal_gaussian <- dnorm(xs, hmean, hsd) %>% normalize()
   print(mean(h))
   print(mean(ideal_gaussian))
+  print(hmean)
+  print(sum(xs * ideal_gaussian))
   
-  tibble::tibble(x = new_xs, h, ideal_gaussian)
+  tibble::tibble(x = xs, h, ideal_gaussian)
 }
 
 
-N <- 20
+N <- 3
 fs <- list("gamma1" = list(
   d = function(xs) dgamma(xs, shape = 2, scale = 1) %>% normalize(),
   xs = seq(0, 100, 0.01)))
 fs[["gamma1"]][["compare"]] <- bundle_n_convolutions(fs[["gamma1"]], N)
 ## how close is h to a gaussian with the same first and second moments?
-
+ALPHA <- 0.4
 fs[["gamma1"]][["compare"]] %>%
   ggplot(aes(x = x)) +
-  geom_point(aes(y = h)) +
-  #geom_point(aes(y = ideal_gaussian)) +
-  theme_bw()
+  geom_point(aes(y = h), color = 'purple', alpha = ALPHA) +
+  geom_point(aes(y = ideal_gaussian), color = 'green', alpha = ALPHA) +
+  theme_bw() +
+  xlim(c(NA, 25))
 
 
 
