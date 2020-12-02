@@ -207,6 +207,8 @@ convolve_n_times <- function(fdict, n) {
   for (i in seq(from = 1, to = n - 1, by = 1)) {
     g_prev <- g
     g <- convolve(g, f, conj = FALSE, type = "circular")
+    print(sum(xs * g))
+    g <- normalize(g / (sum(xs * g)))
   }
   g
 }
@@ -217,6 +219,11 @@ bundle_n_convolutions <- function(fdict, n) {
   hsd <- sqrt(sum(((xs - hmean)^2) * h))
   
   xs <- fdict[["xs"]]
+  sds <- 4
+  clipped_inds <- (xs > hmean - hsd * sds) & (xs < hmean + hsd * sds)
+  
+  xs <- xs[clipped_inds]
+  h <- h[clipped_inds]
   # ideal_gaussian <- dnorm(xs, mean(h), sd(h))
   ideal_gaussian <- dnorm(xs, hmean, hsd) %>% normalize()
   print(mean(h))
@@ -228,9 +235,11 @@ bundle_n_convolutions <- function(fdict, n) {
 }
 
 
-N <- 3
+
+
+N <- 10
 fs <- list("gamma1" = list(
-  d = function(xs) dgamma(xs, shape = 2, scale = 1) %>% normalize(),
+  d = function(xs) dgamma(xs, shape = 4, scale = 1) %>% normalize(),
   xs = seq(0, 100, 0.01)))
 fs[["gamma1"]][["compare"]] <- bundle_n_convolutions(fs[["gamma1"]], N)
 ## how close is h to a gaussian with the same first and second moments?
@@ -238,8 +247,10 @@ ALPHA <- 0.4
 fs[["gamma1"]][["compare"]] %>%
   ggplot(aes(x = x)) +
   geom_point(aes(y = h), color = 'purple', alpha = ALPHA) +
-  geom_point(aes(y = ideal_gaussian), color = 'green', alpha = ALPHA) +
-  theme_bw() +
+  geom_point(aes(y = ideal_gaussian), color = 'black', alpha = ALPHA) +
+  theme_bw() 
+
++
   xlim(c(NA, 25))
 
 
