@@ -207,51 +207,73 @@ convolve_n_times <- function(fdict, n) {
   for (i in seq(from = 1, to = n - 1, by = 1)) {
     g_prev <- g
     g <- convolve(g, f, conj = FALSE, type = "circular")
-    print(sum(xs * g))
-    g <- normalize(g / (sum(xs * g)))
+    #print(sum(xs * g))
+    #g <- g / (sum(xs * g))
+    #print(sum(xs * g))
   }
   g
 }
 
 bundle_n_convolutions <- function(fdict, n) {
   h <- convolve_n_times(fdict, n)
+  xs <- fdict[["xs"]]
   hmean <- sum(xs * h)
   hsd <- sqrt(sum(((xs - hmean)^2) * h))
   
   xs <- fdict[["xs"]]
-  sds <- 4
+  sds <- 10
   clipped_inds <- (xs > hmean - hsd * sds) & (xs < hmean + hsd * sds)
   
   xs <- xs[clipped_inds]
   h <- h[clipped_inds]
-  # ideal_gaussian <- dnorm(xs, mean(h), sd(h))
   ideal_gaussian <- dnorm(xs, hmean, hsd) %>% normalize()
-  print(mean(h))
-  print(mean(ideal_gaussian))
-  print(hmean)
-  print(sum(xs * ideal_gaussian))
-  
+
   tibble::tibble(x = xs, h, ideal_gaussian)
 }
 
+get_tail_area <- function(h1, gs) {
+  sum(gs > h1) / length(gs)
+}
+
+get_probability_greater <- function(dat) {
+  h <- dat %$% h
+  gauss <- dat %$% ideal_gaussian
+  xs <- dat %$% xs
+  length_h <- length(h)
+  total <- 0
+  while(length(h) > 0) {
+    h1 <- h[1]
+    matches <- h == h1
+    count_h <- sum(matches)
+    ph <- count_h / length_h
+    g_tail_area <- get_tail_area(h1, gauss)
+    total <- total + ph * g_tail_area
+    h <- h[!matches]
+  }
+  total
+}
 
 
-
-N <- 10
+N <- 80
 fs <- list("gamma1" = list(
   d = function(xs) dgamma(xs, shape = 4, scale = 1) %>% normalize(),
-  xs = seq(0, 100, 0.01)))
+  xs = seq(0, 1000, 0.1)))
 fs[["gamma1"]][["compare"]] <- bundle_n_convolutions(fs[["gamma1"]], N)
 ## how close is h to a gaussian with the same first and second moments?
 ALPHA <- 0.4
-fs[["gamma1"]][["compare"]] %>%
+
+compare_dat <- fs[["gamma1"]][["compare"]]
+compare_dat %$% ks.test(x = h, y = ideal_gaussian) %$% statistic
+
+compare_dat %>% get_probability_greater()
+
+compare_dat %>%
   ggplot(aes(x = x)) +
   geom_point(aes(y = h), color = 'purple', alpha = ALPHA) +
   geom_point(aes(y = ideal_gaussian), color = 'black', alpha = ALPHA) +
   theme_bw() 
 
-+
-  xlim(c(NA, 25))
+# + xlim(c(NA, 25))
 
 
 
