@@ -200,35 +200,52 @@ ggsave(five_plot, path = '../out', filename = 'five.png',
 #### Convergence rates for different distribution families.
 ####
 
+
+#bundle_n_convolutions <- function(fdict, n, sds = 4) {
+#  h <- convolve_n_times(fdict, n)
+#  xs <- fdict[["xs"]]
+#  hmean <- sum(xs * h)
+#  hsd <- sqrt(sum(((xs - hmean)^2) * h))
+#  
+#  xs <- fdict[["xs"]]
+#  clipped_inds <- (xs > hmean - hsd * sds) & (xs < hmean + hsd * sds)
+#  
+#  xs <- xs[clipped_inds]
+#  h <- h[clipped_inds]
+#  ideal_gaussian <- dnorm(xs, hmean, hsd) %>% normalize()
+#  
+#  tibble::tibble(x = xs, h, ideal_gaussian)
+#}
+
+
 convolve_n_times <- function(fdict, n) {
   xs <- fdict[["xs"]]
   f <- fdict[["d"]](xs) %>% normalize()
   g <- f
-  for (i in seq(from = 1, to = n - 1, by = 1)) {
-    g_prev <- g
-    g <- convolve(g, f, conj = FALSE, type = "circular")
-    #print(sum(xs * g))
-    #g <- g / (sum(xs * g))
-    #print(sum(xs * g))
+  dfs <- vector(mode = "list", length = n)
+  dfs[[1]] <- tibble::tibble(xs = xs, h = g, convolutions = 0)
+  if (n > 1) {
+    for (i in seq(from = 2, to = n + 1, by = 1)) {
+      g_prev <- g
+      g <- convolve(g, f, conj = FALSE, type = "circular")
+      dfs[[i]] <- tibble::tibble(xs = xs, h = g, convolutions = i - 1)
+    }
   }
-  g
+  dfs
 }
 
-bundle_n_convolutions <- function(fdict, n) {
-  h <- convolve_n_times(fdict, n)
-  xs <- fdict[["xs"]]
+attach_ideal_gaussian <- function(df, sds = 10) {
+  xs <- df$xs
+  h <- df$h
+  convolutions <- unique(df$convolutions)
+  assertthat::are_equal(length(convolutions), 1)
   hmean <- sum(xs * h)
   hsd <- sqrt(sum(((xs - hmean)^2) * h))
-  
-  xs <- fdict[["xs"]]
-  sds <- 10
   clipped_inds <- (xs > hmean - hsd * sds) & (xs < hmean + hsd * sds)
-  
   xs <- xs[clipped_inds]
   h <- h[clipped_inds]
   ideal_gaussian <- dnorm(xs, hmean, hsd) %>% normalize()
-
-  tibble::tibble(x = xs, h, ideal_gaussian)
+  tibble::tibble(x = xs, h, ideal_gaussian, convolutions) 
 }
 
 get_tail_area <- function(h1, gs) {
@@ -254,28 +271,40 @@ get_probability_greater <- function(dat) {
 }
 
 
-N <- 80
+N <- 10
+xs <- seq(-10, 1000, 0.1)
 fs <- list("gamma1" = list(
-  d = function(xs) dgamma(xs, shape = 4, scale = 1) %>% normalize(),
-  xs = seq(0, 1000, 0.1)))
-fs[["gamma1"]][["compare"]] <- bundle_n_convolutions(fs[["gamma1"]], N)
+  d = function(xs) dgamma(xs, shape = 1, scale = 2) %>% normalize(),
+  xs = xs))
+with(fs %$% gamma1, plot(xs[1:1000], d(xs[1:1000])))
+# fs[["gamma1"]][["compare"]] <- bundle_n_convolutions(fs[["gamma1"]], N)
 ## how close is h to a gaussian with the same first and second moments?
-ALPHA <- 0.4
+
+dfs <- fs %$% 
+  gamma1 %>% 
+  convolve_n_times(N) %>%
+  lapply(attach_ideal_gaussian)
+
+combined_df <- dplyr::bind_rows(dfs)
+
+dfs %>% lapply(get_probability_greater)
+
+ALPHA <- 0.6
+SIZE <- 2
+combined_df %>%
+  ggplot(aes(x = x)) +
+  geom_line(aes(y = h), color = 'purple', alpha = 0.8, size = SIZE) +
+  geom_line(aes(y = ideal_gaussian), color = 'black', alpha = ALPHA / 2, size = SIZE) +
+  facet_wrap(~convolutions, scales = "free", ncol = 1) +
+  theme_bw() +
+  theme(panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.title = element_blank(),
+        axis.ticks = element_blank())
+
 
 compare_dat <- fs[["gamma1"]][["compare"]]
 compare_dat %$% ks.test(x = h, y = ideal_gaussian) %$% statistic
-
-compare_dat %>% get_probability_greater()
-
-compare_dat %>%
-  ggplot(aes(x = x)) +
-  geom_point(aes(y = h), color = 'purple', alpha = ALPHA) +
-  geom_point(aes(y = ideal_gaussian), color = 'black', alpha = ALPHA) +
-  theme_bw() 
-
-# + xlim(c(NA, 25))
-
-
 
 
 d <- fs[["gamma1"]][["d"]]
