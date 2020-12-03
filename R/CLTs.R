@@ -225,10 +225,10 @@ convolve_n_times <- function(fdict, n) {
   dfs <- vector(mode = "list", length = n)
   dfs[[1]] <- tibble::tibble(xs = xs, h = g, convolutions = 0)
   if (n > 1) {
-    for (i in seq(from = 2, to = n + 1, by = 1)) {
+    for (i in seq(from = 1, to = n, by = 1)) {
       g_prev <- g
       g <- convolve(g, f, conj = FALSE, type = "circular")
-      dfs[[i]] <- tibble::tibble(xs = xs, h = g, convolutions = i - 1)
+      dfs[[i]] <- tibble::tibble(xs = xs, h = g, convolutions = i)
     }
   }
   dfs
@@ -295,12 +295,15 @@ combined_df %>%
   ggplot(aes(x = x)) +
   geom_line(aes(y = h), color = 'purple', alpha = 0.8, size = SIZE) +
   geom_line(aes(y = ideal_gaussian), color = 'black', alpha = ALPHA / 2, size = SIZE) +
-  facet_wrap(~convolutions, scales = "free", ncol = 1) +
+  # facet_wrap(~convolutions, scales = "free", ncol = 1) +
   theme_bw() +
   theme(panel.grid = element_blank(),
         axis.text = element_blank(),
         axis.title = element_blank(),
-        axis.ticks = element_blank())
+        axis.ticks = element_blank()) +
+  labs(title = 'convolutions: {frame_time}') +
+  gganimate::transition_states(convolutions, transition_length = 2, state_length = 1) +
+  gganimate::ease_aes('linear')
 
 
 compare_dat <- fs[["gamma1"]][["compare"]]
