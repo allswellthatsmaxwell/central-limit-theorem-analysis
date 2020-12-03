@@ -129,10 +129,14 @@ ggsave(five_plot, path = '../out', filename = 'five.png',
 
 N <- 100
 xs <- seq(-10, 1000, 0.1)
-fs <- list("gamma1" = list(
+fs <- list(
+  "gamma2" = list(
+    d = function(xs) dgamma(xs, shape = 3, scale = 0.5) %>% normalize(),
+    xs = xs),
+  "gamma1" = list(
   d = function(xs) dgamma(xs, shape = 1, scale = 2) %>% normalize(),
   xs = xs))
-with(fs %$% gamma1, plot(xs[1:1000], d(xs[1:1000])))
+plot(fs$gamma1$d(xs[1:300]))
 # fs[["gamma1"]][["compare"]] <- bundle_n_convolutions(fs[["gamma1"]], N)
 ## how close is h to a gaussian with the same first and second moments?
 
@@ -145,26 +149,33 @@ combined_df <- dplyr::bind_rows(dfs)
 
 dfs %>% lapply(get_probability_greater)
 
-ALPHA <- 0.6
-SIZE <- 2
+SIZE <- 7
+base_len <- 0.1
+len_factor <- 4
 ymax <- with(combined_df, max(h, ideal_gaussian))
 gifplot <- combined_df %>%
+  dplyr::filter(convolutions <= 30) %>%
   ggplot(aes(x = x, group = convolutions)) +
-  geom_line(aes(y = h), color = 'purple', alpha = 0.8, size = SIZE) +
-  geom_line(aes(y = ideal_gaussian), color = 'black', alpha = ALPHA / 2, size = SIZE) +
+  geom_line(aes(y = ideal_gaussian), color = 'black', alpha = 1, size = SIZE) +
+  geom_line(aes(y = h), color = '#F8766D', alpha = 0.95, size = SIZE) +
   theme_bw() +
   theme(panel.grid = element_blank(),
         axis.text = element_blank(),
         axis.title = element_blank(),
         axis.ticks = element_blank()) +
   # facet_wrap(~convolutions, scales = "free", ncol = 1)
-  # labs(title = 'convolutions: {convolutions}') +
-  gganimate::transition_states(convolutions, transition_length = 0.5, state_length = 0.5, wrap = FALSE) +
+  labs(title = "convolutions: {closest_state}") +
+  gganimate::transition_states(convolutions, wrap = FALSE,
+                               transition_length = base_len / len_factor, 
+                               state_length = base_len / len_factor) +
   gganimate::ease_aes('linear') +
-  view_follow()
-gifplot
+  view_follow(fixed_x = FALSE,
+              fixed_y = FALSE)
+# gifplot
   
-anim <- gganimate::animate(gifplot)
+anim <- gganimate::animate(gifplot, start_pause = 10)
+anim
+
 gganimate::anim_save("gamma1.gif", gifplot)
 # magick::image_write(anim, path="myanimation.gif")
 
