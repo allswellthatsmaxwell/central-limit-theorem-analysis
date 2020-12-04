@@ -159,7 +159,9 @@ make_plot_to_animate <- function(dat, size) {
       geom_line(aes(y = h), color = '#F8766D', alpha = 0.95, size = size) +
       theme_bw() +
       theme(panel.grid = element_blank(),
-            axis.text = element_blank(),
+            axis.text.y = element_blank(),
+            axis.text.x = element_text(size = 20),
+            plot.title = element_text(size = 24),
             axis.title = element_blank(),
             axis.ticks = element_blank()) +
       labs(title = "convolutions: {closest_state}") +
@@ -171,13 +173,38 @@ make_plot_to_animate <- function(dat, size) {
                   fixed_y = FALSE)
 }
 
-apply_convs_then_plot <- function(fdict, nconvs = 30, size = 7, sds = 4) {
+apply_convs_and_stack <- function(fdict, nconvs = 30, sds = 4) {
   fdict %>%
     convolve_n_times(nconvs) %>%
     lapply(function(df) attach_ideal_gaussian(df, sds = sds)) %>%
-    dplyr::bind_rows() %>%
+    dplyr::bind_rows()
+}
+
+apply_convs_then_plot <- function(fdict, nconvs = 30, size = 7, sds = 4) {
+  fdict %>%
+    apply_convs_and_stack(nconvs, sds) %>%
     make_plot_to_animate(size)
 }
 
 
 post_shaper <- function(x) 4
+
+
+get_moments <- function(fdict) {
+  wide_sk <- fdict %>%
+    apply_convs_and_stack() %>% 
+    group_by(convolutions) %>%
+    #dplyr::summarize(skew = moments::skewness(h), 
+    #                  kurtosis = moments::kurtosis(h)) %>%
+    dplyr::summarize(mass = sum(h),
+                     skew = sum(xs^3 * h),
+                     kurtosis = sum(xs^4 * h)) %>%
+    ungroup()
+  s <- wide_sk %>% 
+    dplyr::mutate(statistic = "skew") %>%
+    dplyr::select(convolutions, statistic, val = skew)
+  k <- wide_sk %>% 
+    dplyr::mutate(statistic = "kurtosis") %>%
+    dplyr::select(convolutions, statistic, val = kurtosis)
+  dplyr::bind_rows(s, k)
+}

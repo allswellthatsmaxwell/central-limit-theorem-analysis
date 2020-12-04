@@ -130,7 +130,7 @@ prod <- list(nframes = 200, fps = 50, start_pause = 80)
 dev <- list(nframes = 100, fps = 20, start_pause = 10)
 anim_settings <- dev
 
-N <- 30
+N <- 60
 xs <- seq(-10, 1000, 0.1)
 fs <- list(
   "gamma1" = list(d = function(xs) 
@@ -139,13 +139,18 @@ fs <- list(
     dgamma(xs, shape = 2, scale = 2) %>% normalize()),
   "unif1" = list(d = function(xs) 
     make_shape(xs, 1, 2, post_shaper) %>% normalize()),
+  
+  ## Wow - this one has higher kurtosis and skew 
+  ## after 1 to 3 or 4 or 5 convolutions than it does at 0.
   "bimodal1" = list(d = function(xs) 
     (make_shape(xs, 8, 12, post_shaper) + 
      make_shape(xs, -2, 2, post_shaper)) %>% normalize()),
   "pareto1" = list(d = function(xs) 
     dpareto(xs, 2) %>% normalize()),
   "exp1" = list(d = function(xs) 
-    dexp(xs, 10) %>% normalize())
+    dexp(xs, 10) %>% normalize()),
+  "gaussian1" = list(d = function(xs) 
+    dnorm(xs, 10, 3) %>% normalize())
   )
 for (distname in names(fs)) {
   fs[[distname]][["xs"]] <- xs
@@ -153,6 +158,38 @@ for (distname in names(fs)) {
 
 distname <- "bimodal1"
 distname <- "exp1"
+distname <- "gamma1"
+distname <- "gaussian1"
+
+dx <- xs[2] - xs[1]
+fs[[distname]] %>%
+  apply_convs_and_stack() %>% 
+  group_by(convolutions) %>%
+  dplyr::summarize(mass = sum(h),
+                   mean = sum(xs * h * dx),
+                   variance = sum(xs^2 * h * dx),
+                   skew = sum(xs^3 * h * dx),
+                   kurtosis = sum(xs^4 * h * dx))
+
+fs[[distname]] %>%
+  apply_convs_and_stack() %>% 
+  group_by(convolutions) %>%
+  dplyr::summarize(mass = sum(h),
+                   mean = mean(h / dx),
+                   variance = sd(h)^2,
+                   skew = moments::skewness(h),
+                   kurtosis = moments::kurtosis(h))
+
+
+fs[[distname]] %>%
+  get_moments()
+
+fs[[distname]] %>%
+  get_moments() %>%
+  ggplot(aes(x = convolutions, y = val, color = statistic)) +
+  geom_point() +
+  geom_line() +
+  theme_bw()
 
 fs[[distname]][['anim']] <- fs[[distname]] %>%
   apply_convs_then_plot() %>%
