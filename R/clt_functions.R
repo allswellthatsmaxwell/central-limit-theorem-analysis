@@ -104,13 +104,13 @@ convolve_n_times <- function(fdict, n) {
   xs <- fdict[["xs"]]
   f <- fdict[["d"]](xs) %>% normalize()
   g <- f
-  dfs <- vector(mode = "list", length = n)
+  dfs <- vector(mode = "list", length = n + 1)
   dfs[[1]] <- tibble::tibble(xs = xs, h = g, convolutions = 0)
   if (n > 1) {
-    for (i in seq(from = 1, to = n, by = 1)) {
+    for (i in seq(from = 2, to = n + 1, by = 1)) {
       g_prev <- g
       g <- convolve(g, f, conj = FALSE, type = "circular")
-      dfs[[i]] <- tibble::tibble(xs = xs, h = g, convolutions = i)
+      dfs[[i]] <- tibble::tibble(xs = xs, h = g, convolutions = i - 1)
     }
   }
   dfs
@@ -151,3 +151,33 @@ get_probability_greater <- function(dat) {
   }
   total
 }
+
+make_plot_to_animate <- function(dat, size) {
+  dat %>% 
+    ggplot(aes(x = x, group = convolutions)) +
+      geom_line(aes(y = ideal_gaussian), color = 'black', alpha = 1, size = size) +
+      geom_line(aes(y = h), color = '#F8766D', alpha = 0.95, size = size) +
+      theme_bw() +
+      theme(panel.grid = element_blank(),
+            axis.text = element_blank(),
+            axis.title = element_blank(),
+            axis.ticks = element_blank()) +
+      labs(title = "convolutions: {closest_state}") +
+      gganimate::transition_states(convolutions, wrap = FALSE,
+                                   transition_length = 0.001,
+                                   state_length = 0.001) +
+      gganimate::ease_aes('linear') +
+      view_follow(fixed_x = FALSE,
+                  fixed_y = FALSE)
+}
+
+apply_convs_then_plot <- function(fdict, nconvs = 30, size = 7, sds = 4) {
+  fdict %>%
+    convolve_n_times(nconvs) %>%
+    lapply(function(df) attach_ideal_gaussian(df, sds = sds)) %>%
+    dplyr::bind_rows() %>%
+    make_plot_to_animate(size)
+}
+
+
+post_shaper <- function(x) 4

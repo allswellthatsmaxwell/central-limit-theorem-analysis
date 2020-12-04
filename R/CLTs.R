@@ -8,6 +8,7 @@ library(tibble)
 library(gapminder)
 library(gifski)
 library(gganimate)
+library(EnvStats)
 source("clt_functions.R")
 
 ###############################################################################
@@ -19,7 +20,6 @@ TO = 16
 steps <- seq(from = FROM, to = TO, by = STEP)
 
 
-post_shaper <- function(x) 4
 steps1 <- steps
 f1 <- make_shape(steps1, 1, 2, post_shaper) %>% normalize()
 g1 <- make_shape(steps1, 2.5, 3.5, post_shaper) %>% normalize()
@@ -126,59 +126,45 @@ ggsave(five_plot, path = '../out', filename = 'five.png',
 
 
 
+prod <- list(nframes = 200, fps = 50, start_pause = 80)
+dev <- list(nframes = 100, fps = 20, start_pause = 10)
+anim_settings <- dev
 
-N <- 100
+N <- 30
 xs <- seq(-10, 1000, 0.1)
 fs <- list(
-  "gamma2" = list(
-    d = function(xs) dgamma(xs, shape = 3, scale = 0.5) %>% normalize(),
-    xs = xs),
-  "gamma1" = list(
-  d = function(xs) dgamma(xs, shape = 1, scale = 2) %>% normalize(),
-  xs = xs))
-plot(fs$gamma1$d(xs[1:300]))
-# fs[["gamma1"]][["compare"]] <- bundle_n_convolutions(fs[["gamma1"]], N)
-## how close is h to a gaussian with the same first and second moments?
+  "gamma1" = list(d = function(xs) 
+    dgamma(xs, shape = 1, scale = 2) %>% normalize()),
+  "gamma3" = list(d = function(xs) 
+    dgamma(xs, shape = 2, scale = 2) %>% normalize()),
+  "unif1" = list(d = function(xs) 
+    make_shape(xs, 1, 2, post_shaper) %>% normalize()),
+  "bimodal1" = list(d = function(xs) 
+    (make_shape(xs, 8, 12, post_shaper) + 
+     make_shape(xs, -2, 2, post_shaper)) %>% normalize()),
+  "pareto1" = list(d = function(xs) 
+    dpareto(xs, 2) %>% normalize()),
+  "exp1" = list(d = function(xs) 
+    dexp(xs, 10) %>% normalize())
+  )
+for (distname in names(fs)) {
+  fs[[distname]][["xs"]] <- xs
+}
 
-dfs <- fs %$% 
-  gamma1 %>% 
-  convolve_n_times(N) %>%
-  lapply(function(df) attach_ideal_gaussian(df, sds = 4))
+distname <- "bimodal1"
+distname <- "exp1"
 
-combined_df <- dplyr::bind_rows(dfs)
+fs[[distname]][['anim']] <- fs[[distname]] %>%
+  apply_convs_then_plot() %>%
+  {with(anim_settings, {
+    gganimate::animate(., start_pause = start_pause, fps = fps, 
+                       nframes = nframes)})}
+fs[[distname]][["anim"]]
 
-dfs %>% lapply(get_probability_greater)
 
-SIZE <- 7
-base_len <- 0.1
-len_factor <- 4
-ymax <- with(combined_df, max(h, ideal_gaussian))
-gifplot <- combined_df %>%
-  dplyr::filter(convolutions <= 30) %>%
-  ggplot(aes(x = x, group = convolutions)) +
-  geom_line(aes(y = ideal_gaussian), color = 'black', alpha = 1, size = SIZE) +
-  geom_line(aes(y = h), color = '#F8766D', alpha = 0.95, size = SIZE) +
-  theme_bw() +
-  theme(panel.grid = element_blank(),
-        axis.text = element_blank(),
-        axis.title = element_blank(),
-        axis.ticks = element_blank()) +
-  # facet_wrap(~convolutions, scales = "free", ncol = 1)
-  labs(title = "convolutions: {closest_state}") +
-  gganimate::transition_states(convolutions, wrap = FALSE,
-                               transition_length = base_len / len_factor, 
-                               state_length = base_len / len_factor) +
-  gganimate::ease_aes('linear') +
-  view_follow(fixed_x = FALSE,
-              fixed_y = FALSE)
-# gifplot
-  
-anim <- gganimate::animate(gifplot, start_pause = 10)
-anim
-
-gganimate::anim_save("gamma1.gif", gifplot)
+gganimate::anim_save(glue::glue("{distname}.gif"), gifplot)
 # magick::image_write(anim, path="myanimation.gif")
-
+# dfs %>% lapply(get_probability_greater)
 # facet_wrap(~convolutions, scales = "free", ncol = 1) +
 
 
