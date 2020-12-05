@@ -126,15 +126,15 @@ ggsave(five_plot, path = '../out', filename = 'five.png',
 
 
 
-prod <- list(nframes = 200, fps = 50, start_pause = 80)
+prod <- list(nframes = 200, fps = 30, start_pause = 80)
 dev <- list(nframes = 100, fps = 20, start_pause = 10)
 anim_settings <- dev
 
 N <- 60
-xs <- seq(-10, 1000, 0.1)
+xs <- seq(-10, 1000, 0.01)
 fs <- list(
-  "gamma1" = list(d = function(xs) 
-    dgamma(xs, shape = 1, scale = 2) %>% normalize()),
+  #"gamma1" = list(d = function(xs) 
+  #  dgamma(xs, shape = 1, scale = 2) %>% normalize()),
   "gamma3" = list(d = function(xs) 
     dgamma(xs, shape = 2, scale = 2) %>% normalize()),
   "unif1" = list(d = function(xs) 
@@ -150,7 +150,11 @@ fs <- list(
   "exp1" = list(d = function(xs) 
     dexp(xs, 10) %>% normalize()),
   "gaussian1" = list(d = function(xs) 
-    dnorm(xs, 10, 3) %>% normalize())
+    dnorm(xs, 10, 3) %>% normalize()),
+  #"beta1" = list(d = function(xs) 
+  #  dbeta(xs, 0.5, 0.5) %>% normalize()),
+  "beta2" = list(d = function(xs) 
+    dbeta(xs, 50, 1) %>% normalize())
   )
 for (distname in names(fs)) {
   fs[[distname]][["xs"]] <- xs
@@ -161,75 +165,49 @@ distname <- "exp1"
 distname <- "gamma1"
 distname <- "gaussian1"
 
-dx <- xs[2] - xs[1]
-fs[[distname]] %>%
-  apply_convs_and_stack() %>% 
-  group_by(convolutions) %>%
-  dplyr::summarize(mass = sum(h),
-                   mean = sum(xs * h * dx),
-                   variance = sum(xs^2 * h * dx),
-                   skew = sum(xs^3 * h * dx),
-                   kurtosis = sum(xs^4 * h * dx))
-
-fs[[distname]] %>%
-  apply_convs_and_stack() %>% 
-  group_by(convolutions) %>%
-  dplyr::summarize(mass = sum(h),
-                   mean = mean(h / dx),
-                   variance = sd(h)^2,
-                   skew = moments::skewness(h),
-                   kurtosis = moments::kurtosis(h))
-
-
 add_name <- function(dat, name) {
   dat %>% mutate(distribution = name)
 }
-wide_moments_dflist <- lapply(fs, get_moments)
-wide_moments_dflist <- Map(add_name, wide_moments_dflist, names(wide_moments_dflist)) 
-long_moments_dflist <- wide_moments_dflist %>% lapply(stack_moments)
-long_moments_df <- dplyr::bind_rows(long_moments_dflist)
+long_moments_df <- fs %>%
+  lapply(get_moments) %>%
+  {Map(add_name, ., names(.))} %>% 
+  lapply(stack_moments) %>%
+  dplyr::bind_rows()
+
+target_moment <- "excess_kurtosis"
 long_moments_df %>%
-  dplyr::filter(moment_name %in% c("kurtosis")) %>%
-  ggplot(aes(x = convolutions, y = moment, color = distribution)) +
+  dplyr::filter(moment_name == target_moment) %>%
+  ggplot(aes(x = convolutions, y = abs(moment), color = distribution)) +
   geom_point() +
   geom_line() +
   theme_bw() +
   scale_x_continuous(breaks = seq(0, max(long_moments_df$convolutions), by = 2)) +
-  scale_y_continuous(breaks = seq(0, max(long_moments_df$moment), by = 1))
+  scale_y_continuous(breaks = seq(0, max(long_moments_df$moment), by = 1)) +
+  labs(x = target_moment)
 
-fs[[distname]][['anim']] <- fs[[distname]] %>%
-  apply_convs_then_plot() %>%
-  {with(anim_settings, {
-    gganimate::animate(., start_pause = start_pause, fps = fps, 
-                       nframes = nframes)})}
-fs[[distname]][["anim"]]
+prod
 
+dists_to_gif <- c("bimodal1", "beta2", "gaussian1", "unif1")
+names(dists_to_gif) <- dists_to_gif
+stacks <- lapply(dists_to_gif, function(name) apply_convs_and_stack(fs[[name]]))
 
-gganimate::anim_save(glue::glue("{distname}.gif"), gifplot)
+stack_to_gif_df <- stacks %>% 
+  {Map(add_name, ., names(.))} %>%
+  dplyr::bind_rows()
+facet_gif <- stack_to_gif_df %>%
+  make_plot_to_animate()
+
+facet_gif %>% animate_plot(prod)
+
+beta2 <- fs[["beta2"]] %>% animate_convolutions(prod)
+
+beta2
+
+for (distribution_name in dists_to_gif) {
+  gifplot <- fs[[distribution_name]] %>% animate_convolutions(prod)
+  gganimate::anim_save(glue::glue("../plots/{distribution_name}.gif"), gifplot)
+}
 # magick::image_write(anim, path="myanimation.gif")
 # dfs %>% lapply(get_probability_greater)
 # facet_wrap(~convolutions, scales = "free", ncol = 1) +
-
-
-compare_dat <- fs[["gamma1"]][["compare"]]
-compare_dat %$% ks.test(x = h, y = ideal_gaussian) %$% statistic
-
-
-d <- fs[["gamma1"]][["d"]]
-xs <- fs[["gamma1"]][["xs"]]
-
-d(xs)
-
-
-sum(xs * d(xs))
-plot(xs, d(xs))
-
-r <- convolve_n_times(fs[["gamma1"]], N)
-
-sum(xs * r)
-
-
-
-
-
 

@@ -152,8 +152,11 @@ get_probability_greater <- function(dat) {
   total
 }
 
-make_plot_to_animate <- function(dat, size) {
+make_plot_to_animate <- function(dat, size = 7) {
   dat %>% 
+    #mutate(show_time = case_when(convolutions %in% c(1, 2, 3) ~ 20,
+    #                             TRUE ~ 1),
+    #       reveal_time = cumsum(show_time)) %>%
     ggplot(aes(x = x, group = convolutions)) +
       geom_line(aes(y = ideal_gaussian), color = 'black', alpha = 1, size = size) +
       geom_line(aes(y = h), color = '#F8766D', alpha = 0.95, size = size) +
@@ -164,13 +167,15 @@ make_plot_to_animate <- function(dat, size) {
             plot.title = element_text(size = 24),
             axis.title = element_blank(),
             axis.ticks = element_blank()) +
+      # facet_wrap(~distribution, scales = "free") +
       labs(title = "convolutions: {closest_state}") +
       gganimate::transition_states(convolutions, wrap = FALSE,
                                    transition_length = 0.001,
                                    state_length = 0.001) +
+      # gganimate::transition_time(show_time) +  
       gganimate::ease_aes('linear') +
       view_follow(fixed_x = FALSE,
-                  fixed_y = FALSE)
+                  fixed_y = FALSE) 
 }
 
 apply_convs_and_stack <- function(fdict, nconvs = 30, sds = 4) {
@@ -200,14 +205,8 @@ get_moments <- function(fdict) {
     group_by(convolutions, mass, mean) %>%
     dplyr::summarize(variance = sum((x - mean)^2 * h),
                      skew = sum(((x - mean) / sqrt(variance))^3 * h),
-                     kurtosis = sum(((x - mean) / sqrt(variance))^4 * h))
-  #s <- wide_sk %>% 
-  #  dplyr::mutate(statistic = "skew") %>%
-  #  dplyr::select(convolutions, statistic, val = skew)
-  #k <- wide_sk %>% 
-  #  dplyr::mutate(statistic = "kurtosis") %>%
-  #  dplyr::select(convolutions, statistic, val = kurtosis)
-  #dplyr::bind_rows(s, k)
+                     kurtosis = sum(((x - mean) / sqrt(variance))^4 * h),
+                     excess_kurtosis = 3 - kurtosis)
 }
 
 stack_moments <- function(wide_moments) {
@@ -218,6 +217,18 @@ stack_moments <- function(wide_moments) {
     colnames(result) <- c("distribution", "convolutions", "moment_name", "moment")
     result
   }
-  lapply(c("mass", "mean", "variance", "skew", "kurtosis"), pick) %>%
+  lapply(c("mass", "mean", "variance", "skew", "kurtosis", "excess_kurtosis"), pick) %>%
     Reduce(dplyr::bind_rows, .)
+}
+
+animate_plot <- function(plot, anim_settings) {
+  with(anim_settings, {
+    gganimate::animate(plot, start_pause = start_pause, fps = fps, 
+                       nframes = nframes)})
+}
+
+animate_convolutions <- function(fdict, anim_settings) {
+  fdict %>%
+    apply_convs_then_plot() %>%
+    animate_plot(anim_settings)
 }
