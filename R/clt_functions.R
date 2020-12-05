@@ -109,7 +109,7 @@ convolve_n_times <- function(fdict, n) {
   if (n > 1) {
     for (i in seq(from = 2, to = n + 1, by = 1)) {
       g_prev <- g
-      g <- convolve(g, f, conj = FALSE, type = "circular")
+      g <- convolve(g, f, conj = FALSE, type = "circular") %>% normalize() ## ?
       dfs[[i]] <- tibble::tibble(xs = xs, h = g, convolutions = i - 1)
     }
   }
@@ -191,20 +191,33 @@ post_shaper <- function(x) 4
 
 
 get_moments <- function(fdict) {
-  wide_sk <- fdict %>%
-    apply_convs_and_stack() %>% 
+  dx <- fdict %$% {xs[2] - xs[1]}
+  fdict %>%
+    apply_convs_and_stack(sds = 100) %>% 
     group_by(convolutions) %>%
-    #dplyr::summarize(skew = moments::skewness(h), 
-    #                  kurtosis = moments::kurtosis(h)) %>%
-    dplyr::summarize(mass = sum(h),
-                     skew = sum(xs^3 * h),
-                     kurtosis = sum(xs^4 * h)) %>%
-    ungroup()
-  s <- wide_sk %>% 
-    dplyr::mutate(statistic = "skew") %>%
-    dplyr::select(convolutions, statistic, val = skew)
-  k <- wide_sk %>% 
-    dplyr::mutate(statistic = "kurtosis") %>%
-    dplyr::select(convolutions, statistic, val = kurtosis)
-  dplyr::bind_rows(s, k)
+    dplyr::mutate(mass = sum(h),
+                  mean = sum(x * h)) %>%
+    group_by(convolutions, mass, mean) %>%
+    dplyr::summarize(variance = sum((x - mean)^2 * h),
+                     skew = sum(((x - mean) / sqrt(variance))^3 * h),
+                     kurtosis = sum(((x - mean) / sqrt(variance))^4 * h))
+  #s <- wide_sk %>% 
+  #  dplyr::mutate(statistic = "skew") %>%
+  #  dplyr::select(convolutions, statistic, val = skew)
+  #k <- wide_sk %>% 
+  #  dplyr::mutate(statistic = "kurtosis") %>%
+  #  dplyr::select(convolutions, statistic, val = kurtosis)
+  #dplyr::bind_rows(s, k)
+}
+
+stack_moments <- function(wide_moments) {
+  pick <- function(moment_name) {
+    result <- wide_moments %>% 
+      dplyr::mutate(moment = moment_name, moment = moment_name) %>%
+      .[,c("distribution", "convolutions", "moment", moment_name)]
+    colnames(result) <- c("distribution", "convolutions", "moment_name", "moment")
+    result
+  }
+  lapply(c("mass", "mean", "variance", "skew", "kurtosis"), pick) %>%
+    Reduce(dplyr::bind_rows, .)
 }

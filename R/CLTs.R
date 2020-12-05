@@ -145,8 +145,8 @@ fs <- list(
   "bimodal1" = list(d = function(xs) 
     (make_shape(xs, 8, 12, post_shaper) + 
      make_shape(xs, -2, 2, post_shaper)) %>% normalize()),
-  "pareto1" = list(d = function(xs) 
-    dpareto(xs, 2) %>% normalize()),
+  #"pareto1" = list(d = function(xs) 
+  #  dpareto(xs, 2) %>% normalize()),
   "exp1" = list(d = function(xs) 
     dexp(xs, 10) %>% normalize()),
   "gaussian1" = list(d = function(xs) 
@@ -181,15 +181,21 @@ fs[[distname]] %>%
                    kurtosis = moments::kurtosis(h))
 
 
-fs[[distname]] %>%
-  get_moments()
-
-fs[[distname]] %>%
-  get_moments() %>%
-  ggplot(aes(x = convolutions, y = val, color = statistic)) +
+add_name <- function(dat, name) {
+  dat %>% mutate(distribution = name)
+}
+wide_moments_dflist <- lapply(fs, get_moments)
+wide_moments_dflist <- Map(add_name, wide_moments_dflist, names(wide_moments_dflist)) 
+long_moments_dflist <- wide_moments_dflist %>% lapply(stack_moments)
+long_moments_df <- dplyr::bind_rows(long_moments_dflist)
+long_moments_df %>%
+  dplyr::filter(moment_name %in% c("kurtosis")) %>%
+  ggplot(aes(x = convolutions, y = moment, color = distribution)) +
   geom_point() +
   geom_line() +
-  theme_bw()
+  theme_bw() +
+  scale_x_continuous(breaks = seq(0, max(long_moments_df$convolutions), by = 2)) +
+  scale_y_continuous(breaks = seq(0, max(long_moments_df$moment), by = 1))
 
 fs[[distname]][['anim']] <- fs[[distname]] %>%
   apply_convs_then_plot() %>%
