@@ -185,7 +185,7 @@ apply_convs_and_stack <- function(fdict, nconvs = 30, sds = 4) {
     dplyr::bind_rows()
 }
 
-apply_convs_then_plot <- function(fdict, nconvs = 30, size = 7, sds = 4) {
+apply_convs_then_plot <- function(fdict, nconvs = 30, size = 4, sds = 4) {
   fdict %>%
     apply_convs_and_stack(nconvs, sds) %>%
     make_plot_to_animate(size)
@@ -195,10 +195,10 @@ apply_convs_then_plot <- function(fdict, nconvs = 30, size = 7, sds = 4) {
 post_shaper <- function(x) 4
 
 
-get_moments <- function(fdict) {
+get_moments <- function(fdict, nconvs = 30) {
   dx <- fdict %$% {xs[2] - xs[1]}
   fdict %>%
-    apply_convs_and_stack(sds = 100) %>% 
+    apply_convs_and_stack(nconvs = nconvs, sds = 100) %>% 
     group_by(convolutions) %>%
     dplyr::mutate(mass = sum(h),
                   mean = sum(x * h)) %>%
@@ -224,7 +224,8 @@ stack_moments <- function(wide_moments) {
 animate_plot <- function(plot, anim_settings) {
   with(anim_settings, {
     gganimate::animate(plot, start_pause = start_pause, fps = fps, 
-                       nframes = nframes)})
+                       nframes = nframes, height = height, width = width,
+                       units = "in", res = 60)})
 }
 
 animate_convolutions <- function(fdict, anim_settings) {

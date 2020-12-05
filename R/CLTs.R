@@ -107,30 +107,11 @@ ggsave(five_plot, path = '../out', filename = 'five.png',
 #### Convergence rates for different distribution families.
 ####
 
+prod <- list(nframes = 200, fps = 30, start_pause = 80, height = 5, width = 10)
+dev <- list(nframes = 100, fps = 20, start_pause = 10, height = 5, width = 10)
+anim_settings <- prod
 
-#bundle_n_convolutions <- function(fdict, n, sds = 4) {
-#  h <- convolve_n_times(fdict, n)
-#  xs <- fdict[["xs"]]
-#  hmean <- sum(xs * h)
-#  hsd <- sqrt(sum(((xs - hmean)^2) * h))
-#  
-#  xs <- fdict[["xs"]]
-#  clipped_inds <- (xs > hmean - hsd * sds) & (xs < hmean + hsd * sds)
-#  
-#  xs <- xs[clipped_inds]
-#  h <- h[clipped_inds]
-#  ideal_gaussian <- dnorm(xs, hmean, hsd) %>% normalize()
-#  
-#  tibble::tibble(x = xs, h, ideal_gaussian)
-#}
-
-
-
-prod <- list(nframes = 200, fps = 30, start_pause = 80)
-dev <- list(nframes = 100, fps = 20, start_pause = 10)
-anim_settings <- dev
-
-N <- 60
+N <- 30
 xs <- seq(-10, 1000, 0.01)
 fs <- list(
   #"gamma1" = list(d = function(xs) 
@@ -145,8 +126,8 @@ fs <- list(
   "bimodal1" = list(d = function(xs) 
     (make_shape(xs, 8, 12, post_shaper) + 
      make_shape(xs, -2, 2, post_shaper)) %>% normalize()),
-  #"pareto1" = list(d = function(xs) 
-  #  dpareto(xs, 2) %>% normalize()),
+  "pareto1" = list(d = function(xs) 
+    dpareto(xs, 2) %>% normalize()),
   "exp1" = list(d = function(xs) 
     dexp(xs, 10) %>% normalize()),
   "gaussian1" = list(d = function(xs) 
@@ -169,14 +150,14 @@ add_name <- function(dat, name) {
   dat %>% mutate(distribution = name)
 }
 long_moments_df <- fs %>%
-  lapply(get_moments) %>%
+  lapply(function(fdict) get_moments(fdict, N)) %>%
   {Map(add_name, ., names(.))} %>% 
   lapply(stack_moments) %>%
   dplyr::bind_rows()
 
 target_moment <- "excess_kurtosis"
 long_moments_df %>%
-  dplyr::filter(moment_name == target_moment) %>%
+  dplyr::filter(moment_name == target_moment, distribution != 'pareto1') %>%
   ggplot(aes(x = convolutions, y = abs(moment), color = distribution)) +
   geom_point() +
   geom_line() +
@@ -185,9 +166,29 @@ long_moments_df %>%
   scale_y_continuous(breaks = seq(0, max(long_moments_df$moment), by = 1)) +
   labs(x = target_moment)
 
-prod
+skew_to_start_df <- long_moments_df %>%
+  dplyr::filter(moment_name == 'skew', convolutions == 0) %>%
+  select(-moment_name) %>% ## (what about kurtosis to start?)
+  rename(skew = moment)
 
-dists_to_gif <- c("bimodal1", "beta2", "gaussian1", "unif1")
+kurtosis_at_end_df <- long_moments_df %>%
+  dplyr::filter(moment_name == 'kurtosis', convolutions == N) %>%
+  select(-moment_name) %>%
+  rename(kurtosis = moment)
+
+sk_relationship_df <- dplyr::inner_join(
+  skew_to_start_df, kurtosis_at_end_df, by = "distribution",
+  suffix = c("_skew", "_kurtosis"))
+sk_relationship_df
+
+sk_relationship_df %>%
+  ggplot(aes(x = abs(skew), y = kurtosis, color = distribution)) +
+  geom_point() +
+  theme_bw() 
+)  
+  
+
+dists_to_gif <- c("bimodal1", "beta2", "unif1")
 names(dists_to_gif) <- dists_to_gif
 stacks <- lapply(dists_to_gif, function(name) apply_convs_and_stack(fs[[name]]))
 
@@ -199,9 +200,10 @@ facet_gif <- stack_to_gif_df %>%
 
 facet_gif %>% animate_plot(prod)
 
-beta2 <- fs[["beta2"]] %>% animate_convolutions(prod)
+gif <- fs[["pareto1"]] %>% animate_convolutions(prod)
 
-beta2
+# gganimate::anim_save(glue::glue("../plots/beta2.gif"), gif)
+
 
 for (distribution_name in dists_to_gif) {
   gifplot <- fs[[distribution_name]] %>% animate_convolutions(prod)
