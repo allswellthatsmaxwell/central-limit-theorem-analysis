@@ -5,7 +5,7 @@ library(magrittr)
 library(ggplot2)
 library(patchwork)
 library(tibble)
-library(gapminder)
+library(ggrepel)
 library(gifski)
 library(gganimate)
 library(EnvStats)
@@ -114,37 +114,58 @@ anim_settings <- prod
 N <- 30
 xs <- seq(-10, 1000, 0.01)
 fs <- list(
-  #"gamma1" = list(d = function(xs) 
-  #  dgamma(xs, shape = 1, scale = 2) %>% normalize()),
-  "gamma3" = list(d = function(xs) 
-    dgamma(xs, shape = 2, scale = 2) %>% normalize()),
-  "unif1" = list(d = function(xs) 
-    make_shape(xs, 1, 2, post_shaper) %>% normalize()),
+  "gamma1" = list(d = function(xs) dgamma(xs, shape = 2, scale = 2) %>% normalize(),
+                  name = "gamma(2, 2)"),
+  "gamma2" = list(d = function(xs) dgamma(xs, shape = 5, scale = 2) %>% normalize(),
+                  name = "gamma(5, 2)"),
+  
+  
+  "unif1" = list(d = function(xs) make_shape(xs, 1, 2, post_shaper) %>% normalize(),
+                 name = "uniform(1, 2)"),
   
   ## Wow - this one has higher kurtosis and skew 
   ## after 1 to 3 or 4 or 5 convolutions than it does at 0.
   "bimodal1" = list(d = function(xs) 
     (make_shape(xs, 8, 12, post_shaper) + 
-     make_shape(xs, -2, 2, post_shaper)) %>% normalize()),
-  "pareto1" = list(d = function(xs) 
-    dpareto(xs, 2) %>% normalize()),
-  "exp1" = list(d = function(xs) 
-    dexp(xs, 10) %>% normalize()),
-  "gaussian1" = list(d = function(xs) 
-    dnorm(xs, 10, 3) %>% normalize()),
-  #"beta1" = list(d = function(xs) 
-  #  dbeta(xs, 0.5, 0.5) %>% normalize()),
-  "beta2" = list(d = function(xs) 
-    dbeta(xs, 50, 1) %>% normalize())
-  )
+     make_shape(xs, -2, 2, post_shaper)) %>% normalize(),
+    name = "bimodal(8, 12; -2, 2)"),
+  
+  "pareto1" = list(d = function(xs) dpareto(xs, 2) %>% normalize(),
+                   name = "pareto(2)"),
+  
+  "exp1" = list(d = function(xs) dexp(xs, 20) %>% normalize(),
+                name = "exp(20)"),
+  
+  "exp2" = list(d = function(xs) dexp(xs, 3) %>% normalize(),
+                name = "exp(3)"),
+  
+  "gaussian1" = list(d = function(xs) dnorm(xs, 10, 3) %>% normalize(),
+                     name = "gaussian(10, 3)"),
+  
+  "beta1" = list(d = function(xs) dbeta(xs, 20, 10) %>% normalize(),
+                 name = "beta(20, 10)"),
+  
+  "beta2" = list(d = function(xs) dbeta(xs, 50, 1) %>% normalize(),
+                 name = "beta(50, 1)"),
+  
+  "beta3" = list(d = function(xs) dbeta(xs, 100, 10) %>% normalize(),
+                 name = "beta(100, 10)"),
+  
+  "cauchy1" = list(d = function(xs) dcauchy(xs, 0, 2),
+                   name = "cauchy(0, 2)")
+)
 for (distname in names(fs)) {
   fs[[distname]][["xs"]] <- xs
 }
+
 
 distname <- "bimodal1"
 distname <- "exp1"
 distname <- "gamma1"
 distname <- "gaussian1"
+
+descriptive_names_df <- tibble(
+  name = names(fs), display_name = sapply(fs, function(fdict) fdict %$% name))
 
 add_name <- function(dat, name) {
   dat %>% mutate(distribution = name)
@@ -153,18 +174,44 @@ long_moments_df <- fs %>%
   lapply(function(fdict) get_moments(fdict, N)) %>%
   {Map(add_name, ., names(.))} %>% 
   lapply(stack_moments) %>%
-  dplyr::bind_rows()
+  dplyr::bind_rows() %>%
+  dplyr::left_join(descriptive_names_df, by = c("distribution" = "name"))
+  
 
-target_moment <- "excess_kurtosis"
-long_moments_df %>%
-  dplyr::filter(moment_name == target_moment, distribution != 'pareto1') %>%
-  ggplot(aes(x = convolutions, y = abs(moment), color = distribution)) +
+toughies <- c('pareto1', 'cauchy1')
+dists_to_gif <- c("bimodal1", "beta2", "unif1", "exp1", "gaussian1")
+set.seed(5)
+sk_names <- long_moments_df %>% 
+  dplyr::filter(!(distribution %in% toughies)) %$% 
+  unique(display_name) %>%
+  sample()
+sk_colors <- sk_names %>%
+  length() %>%
+  gg_color_hue()
+names(sk_colors) <- sk_names
+sk_colors
+target_moment <- "kurtosis"
+kurtosis_by_convolutions_plot <- long_moments_df %>%
+  dplyr::filter(moment_name == target_moment, 
+                !(distribution %in% toughies),
+                distribution %in% dists_to_gif) %>%
+  ggplot(aes(x = convolutions, y = abs(moment), color = display_name)) +
   geom_point() +
   geom_line() +
-  theme_bw() +
   scale_x_continuous(breaks = seq(0, max(long_moments_df$convolutions), by = 2)) +
   scale_y_continuous(breaks = seq(0, max(long_moments_df$moment), by = 1)) +
-  labs(x = target_moment)
+  labs(x = "convolutions", y = target_moment) +
+  scale_color_manual(values = sk_colors) +
+  theme_bw() +
+  theme(legend.position = "top",
+        legend.title = element_blank(),
+        legend.text = element_text(size = 16),
+        axis.text = element_text(size = 16),
+        axis.title = element_text(size = 18))
+kurtosis_by_convolutions_plot
+ggsave(plot = kurtosis_by_convolutions_plot, path = '../plots', 
+       filename = "kurtosis_by_convolutions.png",
+       dpi = 200, width = 8.06, height = 7.36, units = "in")
 
 skew_to_start_df <- long_moments_df %>%
   dplyr::filter(moment_name == 'skew', convolutions == 0) %>%
@@ -181,14 +228,26 @@ sk_relationship_df <- dplyr::inner_join(
   suffix = c("_skew", "_kurtosis"))
 sk_relationship_df
 
-sk_relationship_df %>%
-  ggplot(aes(x = abs(skew), y = kurtosis, color = distribution)) +
-  geom_point() +
-  theme_bw() 
-)  
-  
+skew_vs_kurtosis_plot <- sk_relationship_df %>%
+  dplyr::inner_join(descriptive_names_df, by = c("distribution" = "name")) %>%
+  dplyr::filter(!(distribution %in% toughies)) %>%
+  ggplot(aes(x = abs(skew), y = kurtosis, color = display_name)) +
+  geom_hline(yintercept = 3, color = "#BB9D00") +
+  geom_label_repel(aes(label = display_name), size = 6) +
+  geom_point(size = 7, alpha = 0.8) +
+  labs(x = "(absolute value of) skew, before any convolutions", y = "kurtosis after 30 convolutions", 
+       title = "Distributions with higher skew take more convolutions to reach Gaussian.") +
+  theme_bw() +
+  scale_color_manual(values = sk_colors) +
+  theme(axis.text = element_text(size = 16),
+        axis.title = element_text(size = 18),
+        plot.title = element_text(size = 20),
+        legend.position = "none") 
+skew_vs_kurtosis_plot
 
-dists_to_gif <- c("bimodal1", "beta2", "unif1")
+ggsave(plot = skew_vs_kurtosis_plot, path = '../plots', filename = "skew_vs_kurtosis.png",
+       dpi = 300, width = 10.75, height = 6.375, units = "in")
+
 names(dists_to_gif) <- dists_to_gif
 stacks <- lapply(dists_to_gif, function(name) apply_convs_and_stack(fs[[name]]))
 
@@ -200,9 +259,10 @@ facet_gif <- stack_to_gif_df %>%
 
 facet_gif %>% animate_plot(prod)
 
-gif <- fs[["pareto1"]] %>% animate_convolutions(prod)
+prod
+gif <- fs[["exp1"]] %>% animate_convolutions(prod)
 
-# gganimate::anim_save(glue::glue("../plots/beta2.gif"), gif)
+gganimate::anim_save(glue::glue("../plots/exp1.gif"), gif)
 
 
 for (distribution_name in dists_to_gif) {
