@@ -25,7 +25,6 @@ f1 <- make_shape(steps1, 1, 2, post_shaper) %>% normalize()
 g1 <- make_shape(steps1, 2.5, 3.5, post_shaper) %>% normalize()
 name1 <- "unif * unif"
 df1 <- convolve_and_entibble(steps1, f1, g1, name1)
-#plot(pracma::conv(f1, g1))
 plot_convolutions(df1)
 
 make_unif <- function(s, a, b) make_shape(s, a, b, post_shaper) %>% normalize()
@@ -102,16 +101,21 @@ five_plot <- Reduce(`+`, plots) + plot_layout(nrow = 1)
 ggsave(five_plot, path = '../out', filename = 'five.png',
        dpi = 200, width = 12, height = 8, units = "in")
 
+###############################################################################
+###############################################################################
+#### Convergence rates for different distribution families. ###################
+###############################################################################
+###############################################################################
 
-####
-#### Convergence rates for different distribution families.
-####
-
+###############################################################################
+## Setup. #####################################################################
+###############################################################################
 prod <- list(nframes = 200, fps = 30, start_pause = 80, height = 5, width = 10)
 dev <- list(nframes = 100, fps = 20, start_pause = 10, height = 5, width = 10)
 anim_settings <- prod
 
 N <- 30
+ALLOW_WRITE <- FALSE
 xs <- seq(-10, 1000, 0.01)
 fs <- list(
   "gamma1" = list(d = function(xs) dgamma(xs, shape = 2, scale = 2) %>% normalize(),
@@ -159,117 +163,80 @@ for (distname in names(fs)) {
 }
 
 
-distname <- "bimodal1"
-distname <- "exp1"
-distname <- "gamma1"
-distname <- "gaussian1"
+dists_to_gif <- c("bimodal1", "beta2", "unif1", "exp1", "gaussian1")
+names(dists_to_gif) <- dists_to_gif
 
 descriptive_names_df <- tibble(
   name = names(fs), display_name = sapply(fs, function(fdict) fdict %$% name))
 
-add_name <- function(dat, name) {
-  dat %>% mutate(distribution = name)
-}
-long_moments_df <- fs %>%
-  lapply(function(fdict) get_moments(fdict, N)) %>%
-  {Map(add_name, ., names(.))} %>% 
-  lapply(stack_moments) %>%
-  dplyr::bind_rows() %>%
+long_moments_df <- fs %>% 
+  make_long_moments_df(N) %>%
   dplyr::left_join(descriptive_names_df, by = c("distribution" = "name"))
-  
 
-toughies <- c('pareto1', 'cauchy1')
-dists_to_gif <- c("bimodal1", "beta2", "unif1", "exp1", "gaussian1")
-set.seed(5)
-sk_names <- long_moments_df %>% 
-  dplyr::filter(!(distribution %in% toughies)) %$% 
-  unique(display_name) %>%
-  sample()
-sk_colors <- sk_names %>%
-  length() %>%
-  gg_color_hue()
-names(sk_colors) <- sk_names
-sk_colors
-target_moment <- "kurtosis"
-kurtosis_by_convolutions_plot <- long_moments_df %>%
-  dplyr::filter(moment_name == target_moment, 
-                !(distribution %in% toughies),
-                distribution %in% dists_to_gif) %>%
-  ggplot(aes(x = convolutions, y = abs(moment), color = display_name)) +
-  geom_point() +
-  geom_line() +
-  scale_x_continuous(breaks = seq(0, max(long_moments_df$convolutions), by = 2)) +
-  scale_y_continuous(breaks = seq(0, max(long_moments_df$moment), by = 1)) +
-  labs(x = "convolutions", y = target_moment) +
-  scale_color_manual(values = sk_colors) +
-  theme_bw() +
-  theme(legend.position = "top",
-        legend.title = element_blank(),
-        legend.text = element_text(size = 16),
-        axis.text = element_text(size = 16),
-        axis.title = element_text(size = 18))
-kurtosis_by_convolutions_plot
-ggsave(plot = kurtosis_by_convolutions_plot, path = '../plots', 
-       filename = "kurtosis_by_convolutions.png",
-       dpi = 200, width = 8.06, height = 7.36, units = "in")
-
-skew_to_start_df <- long_moments_df %>%
-  dplyr::filter(moment_name == 'skew', convolutions == 0) %>%
-  select(-moment_name) %>% ## (what about kurtosis to start?)
-  rename(skew = moment)
-
-kurtosis_at_end_df <- long_moments_df %>%
-  dplyr::filter(moment_name == 'kurtosis', convolutions == N) %>%
-  select(-moment_name) %>%
-  rename(kurtosis = moment)
-
-sk_relationship_df <- dplyr::inner_join(
-  skew_to_start_df, kurtosis_at_end_df, by = "distribution",
-  suffix = c("_skew", "_kurtosis"))
-sk_relationship_df
-
-skew_vs_kurtosis_plot <- sk_relationship_df %>%
-  dplyr::inner_join(descriptive_names_df, by = c("distribution" = "name")) %>%
+distribution_colors <- long_moments_df %>%
   dplyr::filter(!(distribution %in% toughies)) %>%
-  ggplot(aes(x = abs(skew), y = kurtosis, color = display_name)) +
-  geom_hline(yintercept = 3, color = "#BB9D00") +
-  geom_label_repel(aes(label = display_name), size = 6) +
-  geom_point(size = 7, alpha = 0.8) +
-  labs(x = "(absolute value of) skew, before any convolutions", y = "kurtosis after 30 convolutions", 
-       title = "Distributions with higher skew take more convolutions to reach Gaussian.") +
-  theme_bw() +
-  scale_color_manual(values = sk_colors) +
-  theme(axis.text = element_text(size = 16),
-        axis.title = element_text(size = 18),
-        plot.title = element_text(size = 20),
-        legend.position = "none") 
+  get_distributions_colors()
+
+target_moment <- "kurtosis"
+
+
+###############################################################################
+## Plotting relationship between number of convolutions and kurtosis. #########
+###############################################################################
+kurtosis_by_convolutions_plot <- long_moments_df %>%
+  dplyr::filter(moment_name == target_moment,
+                distribution %in% dists_to_gif) %>%
+  make_moment_by_convolutions_plot()
+
+if (ALLOW_WRITE) {
+  ggsave(plot = kurtosis_by_convolutions_plot, path = '../plots', 
+         filename = "kurtosis_by_convolutions.png",
+         dpi = 200, width = 8.06, height = 7.36, units = "in")
+}
+###############################################################################
+## Plotting relationship between skew and kurtosis. ###########################
+###############################################################################
+sk_relationship_df <- get_sk_relationship(long_moments_df, N)
+
+skew_vs_kurtosis_plot <- make_skew_vs_kurtosis_plot(
+  sk_relationship_df, descriptive_names_df, distribution_colors)  
 skew_vs_kurtosis_plot
 
-ggsave(plot = skew_vs_kurtosis_plot, path = '../plots', filename = "skew_vs_kurtosis.png",
-       dpi = 300, width = 10.75, height = 6.375, units = "in")
 
-names(dists_to_gif) <- dists_to_gif
-stacks <- lapply(dists_to_gif, function(name) apply_convs_and_stack(fs[[name]]))
-
-stack_to_gif_df <- stacks %>% 
-  {Map(add_name, ., names(.))} %>%
-  dplyr::bind_rows()
-facet_gif <- stack_to_gif_df %>%
-  make_plot_to_animate()
-
-facet_gif %>% animate_plot(prod)
-
-prod
-gif <- fs[["exp1"]] %>% animate_convolutions(prod)
-
-gganimate::anim_save(glue::glue("../plots/exp1.gif"), gif)
-
-
-for (distribution_name in dists_to_gif) {
-  gifplot <- fs[[distribution_name]] %>% animate_convolutions(prod)
-  gganimate::anim_save(glue::glue("../plots/{distribution_name}.gif"), gifplot)
+if (ALLOW_WRITE) {
+  ggsave(plot = skew_vs_kurtosis_plot, path = '../plots', filename = "skew_vs_kurtosis.png",
+         dpi = 300, width = 10.75, height = 6.375, units = "in")
 }
-# magick::image_write(anim, path="myanimation.gif")
-# dfs %>% lapply(get_probability_greater)
-# facet_wrap(~convolutions, scales = "free", ncol = 1) +
+###############################################################################
+## Making the animations. #####################################################
+###############################################################################
+## Test animation.
+gif <- fs[["exp1"]] %>% animate_convolutions(prod)
+if (ALLOW_WRITE) {
+  gganimate::anim_save(glue::glue("../plots/exp1.gif"), gif)
+}
 
+## Actual all animations.
+if (ALLOW_WRITE) {
+  for (distribution_name in dists_to_gif) {
+    gifplot <- fs[[distribution_name]] %>% animate_convolutions(prod)
+    gganimate::anim_save(glue::glue("../plots/{distribution_name}.gif"), gifplot)
+  }
+}
+
+###############################################################################
+###############################################################################
+## Convolving different shapes. ###############################################
+###############################################################################
+###############################################################################
+
+
+###############################################################################
+###############################################################################
+### Other. ####################################################################
+###############################################################################
+###############################################################################
+f <- 0.0001
+M <- 1000
+hist(sapply(1:10000, function(i) sum(runif(M) <= f)))
+M*f

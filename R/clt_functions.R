@@ -238,3 +238,82 @@ gg_color_hue <- function(n) {
   hues = seq(15, 375, length = n + 1)
   hcl(h = hues, l = 65, c = 100)[1:n]
 }
+
+make_skew_vs_kurtosis_plot <- function(sk_relationship_df, descriptive_names_df,
+                                       distributions_colors,
+                                       toughies = c('pareto1', 'cauchy1')) {
+  sk_relationship_df %>%
+    dplyr::inner_join(descriptive_names_df, by = c("distribution" = "name")) %>%
+    dplyr::filter(!(distribution %in% toughies)) %>%
+    ggplot(aes(x = abs(skew), y = kurtosis, color = display_name)) +
+    geom_hline(yintercept = 3, color = "#BB9D00") +
+    geom_label_repel(aes(label = display_name), size = 6) +
+    geom_point(size = 7, alpha = 0.8) +
+    labs(x = "(absolute value of) skew, before any convolutions", y = "kurtosis after 30 convolutions", 
+         title = "Distributions with higher skew take more convolutions to reach Gaussian.") +
+    theme_bw() +
+    scale_color_manual(values = distributions_colors) +
+    theme(axis.text = element_text(size = 16),
+          axis.title = element_text(size = 18),
+          plot.title = element_text(size = 20),
+          legend.position = "none")
+}
+
+make_moment_by_convolutions_plot <- function(long_moments_df,
+                                             distribution_colors) {
+  long_moments_df %>%
+    ggplot(aes(x = convolutions, y = abs(moment), color = display_name)) +
+    geom_point() +
+    geom_line() +
+    scale_x_continuous(breaks = seq(0, max(long_moments_df$convolutions), by = 2)) +
+    scale_y_continuous(breaks = seq(0, max(long_moments_df$moment), by = 1)) +
+    labs(x = "convolutions", y = target_moment) +
+    scale_color_manual(values = distribution_colors) +
+    theme_bw() +
+    theme(legend.position = "top",
+          legend.title = element_blank(),
+          legend.text = element_text(size = 16),
+          axis.text = element_text(size = 16),
+          axis.title = element_text(size = 18))
+}
+
+get_distributions_colors <- function(df, seed = 5) {
+  set.seed(seed)
+  distribution_names_for_colors <- long_moments_df %$% 
+    unique(display_name) %>%
+    sample()
+  distribution_colors <- distribution_names_for_colors %>%
+    length() %>%
+    gg_color_hue()
+  names(distribution_colors) <- distribution_names_for_colors
+  distribution_colors
+}
+
+add_name <- function(dat, name) {
+  dat %>% mutate(distribution = name)
+}
+
+make_long_moments_df <- function(fs, nconvs) {
+  fs %>%
+    lapply(function(fdict) get_moments(fdict, nconvs)) %>%
+    {Map(add_name, ., names(.))} %>% 
+    lapply(stack_moments) %>%
+    dplyr::bind_rows()
+}
+
+
+get_sk_relationship <- function(long_moments_df, nconvs) {
+  skew_to_start_df <- long_moments_df %>%
+    dplyr::filter(moment_name == 'skew', convolutions == 0) %>%
+    select(-moment_name) %>% ## (what about kurtosis to start?)
+    rename(skew = moment)
+  
+  kurtosis_at_end_df <- long_moments_df %>%
+    dplyr::filter(moment_name == 'kurtosis', convolutions == nconvs) %>%
+    select(-moment_name) %>%
+    rename(kurtosis = moment)
+  
+  dplyr::inner_join(
+    skew_to_start_df, kurtosis_at_end_df, by = "distribution",
+    suffix = c("_skew", "_kurtosis"))
+}
