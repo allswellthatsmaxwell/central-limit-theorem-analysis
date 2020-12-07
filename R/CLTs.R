@@ -230,27 +230,32 @@ if (ALLOW_WRITE) {
 ###############################################################################
 ###############################################################################
 
-make_beta <- function(xs, trials, prop_success) {
+make_beta <- function(xs, trials, prop_success, i) {
   success <- round(trials * prop_success)
   fail <- trials - success
   alpha <- success + 1
   beta <- fail + 1
   ys <- dbeta(xs, alpha, beta)
-  name <- glue::glue("beta({alpha}, {beta})")
+  name <- glue::glue("beta({alpha}, {beta}) {i}")
   tibble::tibble(xs, ys, alpha, beta, name)
 }
 
 #' returns k beta distributions.
-beta_generator <- function(xs, k, seed = 5) {
-  trials_max <- 10
+beta_generator <- function(xs, k, bound, seed = 5) {
+  trials_max <- 100
   successes_prop_max <- 1
   trials_list <- sample(trials_max, k, replace = TRUE)
-  success_prop_list <- runif(k, min = 0, max = successes_prop_max)
+  #success_prop_list <- runif(k, min = 0, max = successes_prop_max)
+  success_prop_list <- c(runif((k + 1) %/% 2, min = 0, max = bound),
+                         runif(k %/% 2, min = (1 - bound), max = 1))
   set.seed(seed)
-  Map(function(t, s) make_beta(xs, t, s), trials_list, success_prop_list) %>%
+  i <- 0
+  Map(function(t, s) make_beta(xs, t, s, i <<- i + 1), trials_list, success_prop_list) %>%
     dplyr::bind_rows()
 }
-betas_df <- beta_generator(xs, 5)
+xs <- seq(from = -10, to = 1000, by = 0.01)
+betas_df <- beta_generator(xs, 30, 0.0001)
+betas_df %>% group_by(name) %>% summarize(n())
 beta_conv <- betas_df %>%
   convolve_distributions_frame(sds = 4)
   
@@ -261,8 +266,9 @@ components_plot <- betas_df %>%
   theme_bw() +
   theme(axis.text = element_text(size = 16),
         axis.title = element_blank(),
-        legend.position = "left",
+        legend.position = "none",
         legend.title = element_blank())
+components_plot
 
 convolution_result_plot <- beta_conv %>%
   ggplot(aes(x = x)) +
@@ -274,7 +280,6 @@ convolution_result_plot <- beta_conv %>%
         axis.ticks = element_blank(),
         axis.title = element_blank())
 convolution_result_plot
-components_plot
 
 components_plot + convolution_result_plot
 ###############################################################################
