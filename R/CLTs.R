@@ -244,23 +244,39 @@ make_beta <- function(xs, trials, prop_success) {
 beta_generator <- function(xs, k, seed = 5) {
   trials_max <- 10
   successes_prop_max <- 1
-  trials_list <- sample(trials_max, k)
+  trials_list <- sample(trials_max, k, replace = TRUE)
   success_prop_list <- runif(k, min = 0, max = successes_prop_max)
   set.seed(seed)
   Map(function(t, s) make_beta(xs, t, s), trials_list, success_prop_list) %>%
     dplyr::bind_rows()
 }
 betas_df <- beta_generator(xs, 5)
-
-betas_df %>% 
+beta_conv <- betas_df %>%
+  convolve_distributions_frame(sds = 4)
+  
+components_plot <- betas_df %>% 
   dplyr::filter(dplyr::between(xs, 0, 1)) %>%
   ggplot(aes(x = xs, y = ys, color = name)) +
   geom_line() +
-  theme_bw() 
-  #facet_wrap(~name, scales = "free_y")
-  
-  
+  theme_bw() +
+  theme(axis.text = element_text(size = 16),
+        axis.title = element_blank(),
+        legend.position = "left",
+        legend.title = element_blank())
 
+convolution_result_plot <- beta_conv %>%
+  ggplot(aes(x = x)) +
+  geom_line(aes(y = ideal_gaussian), color = 'black') +
+  geom_line(aes(y = h), color = 'red') +
+  theme_bw() +
+  theme(axis.text = element_blank(),
+        panel.grid = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title = element_blank())
+convolution_result_plot
+components_plot
+
+components_plot + convolution_result_plot
 ###############################################################################
 ###############################################################################
 ### Other. ####################################################################

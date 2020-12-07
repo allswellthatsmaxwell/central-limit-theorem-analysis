@@ -116,18 +116,23 @@ convolve_n_times <- function(fdict, n) {
   dfs
 }
 
-attach_ideal_gaussian <- function(df, sds = 10) {
-  xs <- df$xs
-  h <- df$h
-  convolutions <- unique(df$convolutions)
-  assertthat::are_equal(length(convolutions), 1)
+clip_pdf <- function(xs, h, sds = 10) {
   hmean <- sum(xs * h)
   hsd <- sqrt(sum(((xs - hmean)^2) * h))
   clipped_inds <- (xs > hmean - hsd * sds) & (xs < hmean + hsd * sds)
   xs <- xs[clipped_inds]
   h <- h[clipped_inds]
-  ideal_gaussian <- dnorm(xs, hmean, hsd) %>% normalize()
-  tibble::tibble(x = xs, h, ideal_gaussian, convolutions) 
+  list(xs = xs, h = h, hmean = hmean, hsd = hsd)
+}
+
+attach_ideal_gaussian <- function(df, sds = 10) {
+  xs <- df$xs
+  h <- df$h
+  convolutions <- unique(df$convolutions)
+  assertthat::are_equal(length(convolutions), 1)
+  clipped <- clip_pdf(xs, h, sds = sds)
+  ideal_gaussian <- with(clipped, dnorm(xs, hmean, hsd)) %>% normalize()
+  with(clipped, tibble::tibble(x = xs, h, ideal_gaussian, convolutions))
 }
 
 get_tail_area <- function(h1, gs) {
@@ -316,4 +321,18 @@ get_sk_relationship <- function(long_moments_df, nconvs) {
   dplyr::inner_join(
     skew_to_start_df, kurtosis_at_end_df, by = "distribution",
     suffix = c("_skew", "_kurtosis"))
+}
+
+convolve_distributions_frame <- function(distributions_df, sds = 4) {
+  components <- distributions_df %>%
+    split(., .$name) %>%
+    lapply(function(df) df$ys)
+  
+  components %>%
+    {Reduce(function(f, g) 
+      convolve(g, f, conj = FALSE, type = "circular") %>% normalize(),
+      .)} %>%
+    as.numeric() %>%
+    {tibble::tibble(xs = 1:length(.), h = ., convolutions = length(components))} %>%
+    attach_ideal_gaussian(sds)
 }
