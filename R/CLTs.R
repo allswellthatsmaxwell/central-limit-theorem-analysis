@@ -230,6 +230,36 @@ if (ALLOW_WRITE) {
 ###############################################################################
 ###############################################################################
 
+make_beta <- function(xs, trials, prop_success) {
+  success <- round(trials * prop_success)
+  fail <- trials - success
+  alpha <- success + 1
+  beta <- fail + 1
+  ys <- dbeta(xs, alpha, beta)
+  name <- glue::glue("beta({alpha}, {beta})")
+  tibble::tibble(xs, ys, alpha, beta, name)
+}
+
+#' returns k beta distributions.
+beta_generator <- function(xs, k, seed = 5) {
+  trials_max <- 10
+  successes_prop_max <- 1
+  trials_list <- sample(trials_max, k)
+  success_prop_list <- runif(k, min = 0, max = successes_prop_max)
+  set.seed(seed)
+  Map(function(t, s) make_beta(xs, t, s), trials_list, success_prop_list) %>%
+    dplyr::bind_rows()
+}
+betas_df <- beta_generator(xs, 5)
+
+betas_df %>% 
+  dplyr::filter(dplyr::between(xs, 0, 1)) %>%
+  ggplot(aes(x = xs, y = ys, color = name)) +
+  geom_line() +
+  theme_bw() 
+  #facet_wrap(~name, scales = "free_y")
+  
+  
 
 ###############################################################################
 ###############################################################################
