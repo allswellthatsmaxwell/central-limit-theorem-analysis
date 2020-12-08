@@ -343,10 +343,11 @@ plot_components <- function(df, size, verbose = FALSE) {
     ggplot(aes(x = xs, y = ys, color = name)) +
     geom_line(size = size) +
     theme_bw() +
-    theme(axis.text = element_blank(),
+    theme(axis.text.y = element_blank(),
+          axis.text.x = element_text(size = 13),
           axis.title = element_blank(),
-          axis.ticks = element_blank(),
-          legend.position = "left",
+          axis.ticks.y = element_blank(),
+          legend.position = "none",
           legend.text = element_text(size = 12),
           legend.title = element_blank(),
           plot.title = element_text(size = 17))  

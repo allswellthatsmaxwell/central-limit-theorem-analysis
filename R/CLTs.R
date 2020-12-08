@@ -245,9 +245,9 @@ make_beta <- function(xs, trials, prop_success, i) {
 
 #' returns k beta distributions.
 beta_generator <- function(xs, k, bound, seed = 5) {
-  trials_min <- 100
-  trials_max <- 100
-  trials_list <- sample(trials_max, size = k, replace = TRUE)
+  trials_min <- 990
+  trials_max <- 1010
+  trials_list <- sample(trials_min:trials_max, size = k, replace = TRUE)
   success_prop_list <- c(runif((k + 1) %/% 2, min = 0, max = bound),
                          runif(k %/% 2, min = (1 - bound), max = 1))
   set.seed(seed)
@@ -255,20 +255,74 @@ beta_generator <- function(xs, k, bound, seed = 5) {
   Map(function(t, s) make_beta(xs, t, s, i <<- i + 1), trials_list, success_prop_list) %>%
     dplyr::bind_rows()
 }
-xs <- seq(from = -10, to = 200, by = 0.001)
-betas_df <- beta_generator(xs, 3, 0.001)
+
+make_gamma <- function(xs, shape, rate, i) {
+  ys <- dgamma(xs, shape, rate = rate)
+  be_safe <- TRUE
+  name <- glue::glue("gamma({round(shape, 2)}, {round(rate, 2)})")
+  if (be_safe)
+    name <- glue::glue("{name} {i}")
+  tibble::tibble(xs, ys, shape, rate, name)
+}
+
+#' returns k gamma distributions.
+gamma_generator <- function(xs, k, seed = 5) {
+  shapes_space <- seq(from = 0, to = 1, by = 0.01) %>% exp()
+  rates_space <- c(0.5, 1, 1.5, 2)
+  set.seed(seed)
+  shapes <- sample(shapes_space, size = k, replace = TRUE)
+  rates <- sample(rates_space, size = k, replace = TRUE)
+  i <- 0
+  Map(function(t, s) make_gamma(xs, t, s, i <<- i + 1), shapes, rates) %>%
+    dplyr::bind_rows()
+}
+
+xs <- seq(from = -10, to = 800, by = 0.1)
+gaussian_df <- dplyr::bind_rows(
+  tibble::tibble(xs = xs, ys = dnorm(xs, 50, 10), name = "gaussian(50, 10)",
+                 shape = NA, rate = NA))
+gammas_df <- gamma_generator(xs, 3)
+gammas_df %<>% dplyr::bind_rows(gaussian_df)  
+
+gamma_conv <- gammas_df %>%
+  convolve_distributions_frame(sds = 4)
+gamma_components_composition_plot <- gammas_df %>% 
+  # dplyr::filter(dplyr::between(xs, 0, 1)) %>%
+  plot_composition(gamma_conv, 0.8, verbose = FALSE)
+gamma_components_composition_plot
+yes_gauss <- gamma_components_composition_plot
+no_gauss <- gamma_components_composition_plot
+no_gauss_many <- gamma_components_composition_plot
+no_gauss_many
+yes_no_gauss <- (no_gauss + ggtitle("This gamma * gamma * gamma isn't Gaussian...")) / 
+  (no_gauss_many + ggtitle("This gamma * ... * gamma 100 times doesn't quite make it...")) / 
+  (yes_gauss + ggtitle("But this gamma * gamma * gamma * Gaussian already is!"))
+yes_no_gauss
+## You don't need your distributions to be similarly distributed in order to
+## get convergence benefit from including them. They help even if they're different!
+## Actually, maybe the only important thing is that they be close to gaussian - and if
+## they're closer to gaussian than you, you'll even benefit in convergence!!!!!
+
+betas_df <- beta_generator(xs, 3, 0.1)
 betas_df %>% group_by(name) %>% summarize(n())
 beta_conv <- betas_df %>%
   convolve_distributions_frame(sds = 4)
 
 beta_conv  
 
-components_composition_plot <- betas_df %>% 
+beta_components_composition_plot <- betas_df %>% 
   dplyr::filter(dplyr::between(xs, 0, 1)) %>%
   plot_composition(beta_conv, 0.8, verbose = FALSE)
-components_composition_plot
+beta_components_composition_plot
 
-ggsave(components_composition_plot, path = '../plots', filename = 'beta3.png',
+ggsave(gamma_components_composition_plot, path = '../plots', filename = 'gamma3.png',
+       dpi = 100, width = 11.35, height = 4.14, units = "in")
+
+ggsave(, path = '../plots', filename = 'three_gamma_one_gauss.png',
+       dpi = 140, width = 11.35, height = 4.14 * 2, units = "in")
+
+
+ggsave(beta_components_composition_plot, path = '../plots', filename = 'beta3.png',
        dpi = 100, width = 11.35, height = 4.14, units = "in")
 
 
