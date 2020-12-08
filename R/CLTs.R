@@ -255,8 +255,8 @@ beta_generator <- function(xs, k, bound, seed = 5) {
   Map(function(t, s) make_beta(xs, t, s, i <<- i + 1), trials_list, success_prop_list) %>%
     dplyr::bind_rows()
 }
-xs <- seq(from = -1000, to = 1000, by = 0.1)
-betas_df <- beta_generator(xs, 3, 0.2)
+xs <- seq(from = -10, to = 200, by = 0.001)
+betas_df <- beta_generator(xs, 3, 0.001)
 betas_df %>% group_by(name) %>% summarize(n())
 beta_conv <- betas_df %>%
   convolve_distributions_frame(sds = 4)
@@ -265,7 +265,7 @@ beta_conv
 
 components_composition_plot <- betas_df %>% 
   dplyr::filter(dplyr::between(xs, 0, 1)) %>%
-  plot_composition(beta_conv, 1, verbose = TRUE)
+  plot_composition(beta_conv, 0.8, verbose = FALSE)
 components_composition_plot
 
 ggsave(components_composition_plot, path = '../plots', filename = 'beta3.png',
