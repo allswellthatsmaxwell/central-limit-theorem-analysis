@@ -236,16 +236,18 @@ make_beta <- function(xs, trials, prop_success, i) {
   alpha <- success + 1
   beta <- fail + 1
   ys <- dbeta(xs, alpha, beta)
-  name <- glue::glue("beta({alpha}, {beta}) {i}")
+  be_safe <- FALSE
+  name <- glue::glue("beta({alpha}, {beta})")
+  if (be_safe)
+    name <- glue::glue("{name} {i}")
   tibble::tibble(xs, ys, alpha, beta, name)
 }
 
 #' returns k beta distributions.
 beta_generator <- function(xs, k, bound, seed = 5) {
+  trials_min <- 100
   trials_max <- 100
-  successes_prop_max <- 1
-  trials_list <- sample(trials_max, k, replace = TRUE)
-  #success_prop_list <- runif(k, min = 0, max = successes_prop_max)
+  trials_list <- sample(trials_max, size = k, replace = TRUE)
   success_prop_list <- c(runif((k + 1) %/% 2, min = 0, max = bound),
                          runif(k %/% 2, min = (1 - bound), max = 1))
   set.seed(seed)
@@ -253,35 +255,23 @@ beta_generator <- function(xs, k, bound, seed = 5) {
   Map(function(t, s) make_beta(xs, t, s, i <<- i + 1), trials_list, success_prop_list) %>%
     dplyr::bind_rows()
 }
-xs <- seq(from = -10, to = 1000, by = 0.01)
-betas_df <- beta_generator(xs, 30, 0.0001)
+xs <- seq(from = -1000, to = 1000, by = 0.1)
+betas_df <- beta_generator(xs, 3, 0.2)
 betas_df %>% group_by(name) %>% summarize(n())
 beta_conv <- betas_df %>%
   convolve_distributions_frame(sds = 4)
-  
-components_plot <- betas_df %>% 
+
+beta_conv  
+
+components_composition_plot <- betas_df %>% 
   dplyr::filter(dplyr::between(xs, 0, 1)) %>%
-  ggplot(aes(x = xs, y = ys, color = name)) +
-  geom_line() +
-  theme_bw() +
-  theme(axis.text = element_text(size = 16),
-        axis.title = element_blank(),
-        legend.position = "none",
-        legend.title = element_blank())
-components_plot
+  plot_composition(beta_conv, 1, verbose = TRUE)
+components_composition_plot
 
-convolution_result_plot <- beta_conv %>%
-  ggplot(aes(x = x)) +
-  geom_line(aes(y = ideal_gaussian), color = 'black') +
-  geom_line(aes(y = h), color = 'red') +
-  theme_bw() +
-  theme(axis.text = element_blank(),
-        panel.grid = element_blank(),
-        axis.ticks = element_blank(),
-        axis.title = element_blank())
-convolution_result_plot
+ggsave(components_composition_plot, path = '../plots', filename = 'beta3.png',
+       dpi = 100, width = 11.35, height = 4.14, units = "in")
 
-components_plot + convolution_result_plot
+
 ###############################################################################
 ###############################################################################
 ### Other. ####################################################################

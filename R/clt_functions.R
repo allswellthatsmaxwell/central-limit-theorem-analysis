@@ -131,6 +131,7 @@ attach_ideal_gaussian <- function(df, sds = 10) {
   convolutions <- unique(df$convolutions)
   assertthat::are_equal(length(convolutions), 1)
   clipped <- clip_pdf(xs, h, sds = sds)
+  rm(xs)
   ideal_gaussian <- with(clipped, dnorm(xs, hmean, hsd)) %>% normalize()
   with(clipped, tibble::tibble(x = xs, h, ideal_gaussian, convolutions))
 }
@@ -335,4 +336,42 @@ convolve_distributions_frame <- function(distributions_df, sds = 4) {
     as.numeric() %>%
     {tibble::tibble(xs = 1:length(.), h = ., convolutions = length(components))} %>%
     attach_ideal_gaussian(sds)
+}
+
+plot_components <- function(df, size, verbose = FALSE) {
+  plot <- df %>%
+    ggplot(aes(x = xs, y = ys, color = name)) +
+    geom_line(size = size) +
+    theme_bw() +
+    theme(axis.text = element_blank(),
+          axis.title = element_blank(),
+          axis.ticks = element_blank(),
+          legend.position = "left",
+          legend.text = element_text(size = 12),
+          legend.title = element_blank(),
+          plot.title = element_text(size = 17))  
+  if (verbose) 
+    plot <- plot + ggtitle("The distributions to convolve (overlaid).") 
+  plot
+}
+
+plot_conv_result <- function(df, size, verbose = FALSE) {
+  plot <- df %>%
+    ggplot(aes(x = x)) +
+    geom_line(aes(y = ideal_gaussian), color = 'black', size = size) +
+    geom_line(aes(y = h), color = 'red', size = size) +
+    theme_bw() +
+    theme(axis.text = element_blank(),
+          panel.grid = element_blank(),
+          axis.ticks = element_blank(),
+          axis.title = element_blank(),
+          plot.title = element_text(size = 17))
+    
+  if (verbose) 
+    plot <- plot + ggtitle("The resulting convolution.") 
+  plot
+}
+
+plot_composition <- function(components_df, conv_df, size, verbose = FALSE) {
+  plot_components(components_df, size, verbose) + plot_conv_result(conv_df, size, verbose)
 }
