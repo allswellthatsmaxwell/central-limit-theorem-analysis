@@ -277,12 +277,17 @@ gamma_generator <- function(xs, k, seed = 5) {
     dplyr::bind_rows()
 }
 
-xs <- seq(from = -10, to = 800, by = 0.1)
+xs <- seq(from = -10, to = 1000, by = 0.1)
+g_upscale <- 24
 gaussian_df <- dplyr::bind_rows(
-  tibble::tibble(xs = xs, ys = dnorm(xs, 50, 10), name = "gaussian(50, 10)",
+  tibble::tibble(xs = xs, ys = dnorm(xs, 500, 10 * (g_upscale / 6)) * g_upscale, 
+                 name = "gaussian(50, 10)",
+                 shape = NA, rate = NA))
+beta_df <- dplyr::bind_rows(
+  tibble::tibble(xs = xs, ys = dgamma(xs, 4, 0.035) * 10, name = "gamma()",
                  shape = NA, rate = NA))
 gammas_df <- gamma_generator(xs, 3)
-gammas_df %<>% dplyr::bind_rows(gaussian_df)  
+gammas_df %<>% dplyr::bind_rows(beta_df)
 
 gamma_conv <- gammas_df %>%
   convolve_distributions_frame(sds = 4)
@@ -290,13 +295,20 @@ gamma_components_composition_plot <- gammas_df %>%
   # dplyr::filter(dplyr::between(xs, 0, 1)) %>%
   plot_composition(gamma_conv, 0.8, verbose = FALSE)
 gamma_components_composition_plot
+
+
 yes_gauss <- gamma_components_composition_plot
 no_gauss <- gamma_components_composition_plot
 no_gauss_many <- gamma_components_composition_plot
 no_gauss_many
-yes_no_gauss <- (no_gauss + ggtitle("This gamma * gamma * gamma isn't Gaussian...")) / 
-  (no_gauss_many + ggtitle("This gamma * ... * gamma 100 times doesn't quite make it...")) / 
-  (yes_gauss + ggtitle("But this gamma * gamma * gamma * Gaussian already is!"))
+txt <- theme(plot.title = element_text(size = 14.8))
+yes_no_gauss <- (no_gauss + txt + ggtitle("This gamma * gamma * gamma isn't Gaussian...")) / 
+  (no_gauss_many + txt + ggtitle("This gamma * ... * gamma 100 times doesn't quite make it...")) / 
+  (yes_gauss + txt + ggtitle("But this gamma * gamma * gamma * Gaussian is super close!"))
+
+yes_no_gauss <- (no_gauss + txt + ggtitle("Convolving a fourth skewed Gamma makes a little progress.")) / 
+  (yes_gauss + txt + ggtitle("But convolving in this unskewed weird flat thing gets you closer!"))
+
 yes_no_gauss
 ## You don't need your distributions to be similarly distributed in order to
 ## get convergence benefit from including them. They help even if they're different!
@@ -318,8 +330,8 @@ beta_components_composition_plot
 ggsave(gamma_components_composition_plot, path = '../plots', filename = 'gamma3.png',
        dpi = 100, width = 11.35, height = 4.14, units = "in")
 
-ggsave(, path = '../plots', filename = 'three_gamma_one_gauss.png',
-       dpi = 140, width = 11.35, height = 4.14 * 2, units = "in")
+ggsave(yes_no_gauss, path = '../plots', filename = 'three_gamma_one_gauss.png',
+       dpi = 170, width = 11.46, height = 8.45, units = "in")
 
 
 ggsave(beta_components_composition_plot, path = '../plots', filename = 'beta3.png',

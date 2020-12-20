@@ -353,7 +353,7 @@ plot_components <- function(df, size, verbose = FALSE) {
           plot.title = element_text(size = 17))  
   if (verbose) 
     plot <- plot + ggtitle("The distributions to convolve (overlaid).") 
-  plot
+  plot# + ylim(c(NA, 5))
 }
 
 plot_conv_result <- function(df, size, verbose = FALSE) {
