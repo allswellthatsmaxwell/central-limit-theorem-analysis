@@ -1,6 +1,8 @@
 library(ggplot2)
 library(magrittr)
 library(tibble)
+library(purrr)
+library(dplyr)
 
 FACES <- 1:6
 
@@ -44,6 +46,11 @@ getCorrespondingGaussian <- function(ys) {
   tibble(x=xs, y=dnorm(xs, μ, σ))
 }
 
+sumNonOverlappingWindows <- function(ys, step) {
+  n <- length(ys)
+  nWindows <- floor(n / step)
+  sapply(1:nWindows, function(i) sum(ys[(1 + (i - 1) * step) : (i * step)]))
+}
 
 plotDensities <- function(sums) {
   dat <- tibble(x=sums)
@@ -54,16 +61,58 @@ plotDensities <- function(sums) {
     theme_minimal()
 }
 
+getFairSumsVariance <- function(ndice, nDiceInWindow) {
+  ndice %>%
+    rollDice() %>% 
+    sumNonOverlappingWindows(nDiceInWindow) %>% 
+    var()
+}
 
-ndice <- 200
-nrounds <- 6000
-roundSums <- sapply(1:nrounds, function(i) sum(rollDice(ndice)))
-plotDensities(roundSums)
+getDependentSumsVariance <- function(ndice, nDiceInWindow, pbias) {
+  ndice %>%
+    rollDiceTryingToMatchPrevious(pbias) %>%
+    sumNonOverlappingWindows(nDiceInWindow) %>%
+    var()
+}
 
-pbias <- 0.95
-roundSumsDependent <- sapply(
-  1:nrounds, function(i) sum(rollDiceTryingToMatchPrevious(ndice, pbias)))
+getSumsVarianceDat <- function(fn, ndice, windowSizes) {
+  windowSizes %>%
+    sapply(function(winSize) {
+      fn(ndice, winSize)
+    }) %>%
+    tibble(winSize = windowSizes, variance = .)
+}
 
-plotDensities(roundSumsDependent)
+
+
+ndice <- 1e6
+nDiceInWindow <- 100
+
+## Answering Sonnet 3.6's question about how the variance scales in the independent
+## vs. dependent cases.
+windowSizes <- seq(100, 2000, 100)
+fairSumsVariancesDat <- getSumsVarianceDat(getFairSumsVariance, ndice, windowSizes)
+
+dependentSumsVariancesDat <- getSumsVarianceDat(
+  partial(getDependentSumsVariance, pbias=pbias), ndice, windowSizes)
+
+variancesDat <- dplyr::bind_rows(
+  fairSumsVariancesDat %>% mutate(style='fair'),
+  dependentSumsVariancesDat %>% mutate(style='dependent'))
+variancesDat %>%
+  ggplot(aes(x=winSize, y=sqrt(variance), color=style)) +
+  geom_line() +
+  theme_minimal()
+
+## The Gaussian comparisons.
+fairRolls <- rollDice(ndice)
+fairSums <- sumNonOverlappingWindows(fairRolls, nDiceInWindow)
+plotDensities(fairSums)
+
+pbias <- 0.40
+dependentRolls <- rollDiceTryingToMatchPrevious(ndice, pbias)
+dependentSums <- sumNonOverlappingWindows(dependentRolls, nDiceInWindow)
+
+plotDensities(dependentSums)
 # hahahahahhahahahahahahahahahhahha it looks equally gaussian.
 # make a metric for gaussanity. incorporate feedback from popular post.
