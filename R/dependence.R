@@ -90,7 +90,7 @@ nDiceInWindow <- 100
 
 ## Answering Sonnet 3.6's question about how the variance scales in the independent
 ## vs. dependent cases.
-windowSizes <- seq(100, 2000, 100)
+windowSizes <- seq(100, 8000, 50)
 fairSumsVariancesDat <- getSumsVarianceDat(getFairSumsVariance, ndice, windowSizes)
 
 dependentSumsVariancesDat <- getSumsVarianceDat(
