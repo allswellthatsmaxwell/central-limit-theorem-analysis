@@ -58,51 +58,75 @@ variance_pdf <- function(pdf) {
             max(pdf$x))$value
 }
 
+get_item_names <- function(nitems) {
+  item_names <- c("chips", "salsa", "beer", "pop", "water",
+                  "tacos", "liquor", "napkins", "plates", "cups")
+  additional_names <- sapply(
+    (length(item_names) + 1):nitems, function(i) as.character(i))
+  item_names %>% c(additional_names)
+}
+
+get_copula <- function(nitems) {
+  rho_matrix <- runif(nitems*nitems) %>%
+    matrix(nitems, nitems) %>%
+    Matrix::nearPD() %$%
+    mat
+  normalCopula(param = rho_matrix[lower.tri(rho_matrix)], 
+               dim = nitems, dispstr = "un")
+}
+
+get_marginals <- function(nitems) {
+  lapply(
+    1:nitems, 
+    function(i) list(rate = runif(1, 0, 1)))
+  # function(i) list(rate = rgamma(1, shape = 0.5, scale = 2)))
+}
+
+get_sim_data <- function(item_names) {
+  nitems <- length(item_names)
+  
+  gauss_cop <- get_copula(nitems)
+  marginals <- get_marginals(nitems)
+  mv_dist <- mvdc(copula = gauss_cop, 
+                  margins = rep("exp", nitems), 
+                  paramMargins = marginals)
+  as.data.frame(rMvdc(1000, mv_dist)) %>% 
+    set_colnames(item_names) %>%
+    as_tibble()
+}
+
+get_comparison_plot <- function(convolution) {
+  mu <- mean_pdf(convolution)
+  sigma <- sqrt(variance_pdf(convolution))
+  lb <- mu - 3 * sigma
+  ub <- mu + 3 * sigma
+  gaussian_pdf <- dnorm(convolution$x, mu, sigma)
+  convolution_dat <- convolution %$% 
+    tibble(x=x, y=y, name='convolution')
+  comparison_dat <- tibble(x=convolution$x, y=gaussian_pdf, 
+                           name='actual gaussian') %>%
+    bind_rows(convolution_dat)
+  ggplot(comparison_dat, aes(x=x, y=y, color=name)) +
+    geom_line() +
+    xlim(c(lb, ub)) +
+    theme_bw()
+}
+
+
 # Generate your dependent samples as before
 nitems <- 80
-item_names <- c("chips", "salsa", "beer", "pop", "water",
-                "tacos", "liquor", "napkins", "plates", "cups")
-additional_names <- sapply(
-  (length(item_names) + 1):nitems, function(i) as.character(i))
-item_names %<>% c(additional_names)
-rho_matrix <- runif(nitems*nitems) %>%
-  matrix(nitems, nitems) %>%
-  Matrix::nearPD() %$%
-  mat
-gauss_cop <- normalCopula(param = rho_matrix[lower.tri(rho_matrix)], 
-                          dim = nitems, dispstr = "un")
-marginals <- lapply(
-  1:nitems, 
-  function(i) list(rate = runif(1, 0, 1)))
-  # function(i) list(rate = rgamma(1, shape = 0.5, scale = 2)))
-mv_dist <- mvdc(copula = gauss_cop, 
-                margins = rep("exp", nitems), 
-                paramMargins = marginals)
-sim_data <- as.data.frame(rMvdc(1000, mv_dist)) %>% 
-  set_colnames(item_names) %>%
-  as_tibble()
-
+item_names <- get_item_names(nitems)
+sim_data <- get_sim_data(item_names)
 cor(sim_data) %>% round(2)
 
 # Convert samples to PDFs
 pdfs <- lapply(sim_data, function(x) samples_to_pdf(x))
+
 convolution <- Reduce(convolve_pdfs, tail(pdfs, -1), init=pdfs[[1]])
+get_comparison_plot(convolution)
 # pdfs[["convolution"]] <- convolution
 
 
-
-mu <- mean_pdf(convolution)
-sigma <- sqrt(variance_pdf(convolution))
-lb <- mu - 3 * sigma
-ub <- mu + 3 * sigma
-gaussian_pdf <- dnorm(convolution$x, mu, sigma)
-convolution_dat <- convolution %$% tibble(x=x, y=y, name='convolution')
-comparison_dat <- tibble(x=convolution$x, y=gaussian_pdf, name='gaussian') %>%
-  bind_rows(convolution_dat)
-ggplot(comparison_dat, aes(x=x, y=y, color=name)) +
-  geom_line() +
-  xlim(c(lb, ub)) +
-  theme_bw()
 
 pdfs_long_dat <- Map(
   function(product, pdf) tibble(product=product, x=pdf$x, y=pdf$y),
