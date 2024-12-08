@@ -67,7 +67,7 @@ get_item_names <- function(nitems) {
 }
 
 get_copula <- function(nitems) {
-  rho_matrix <- runif(nitems*nitems) %>%
+  rho_matrix <- runif(nitems*nitems, 0, 0.00001) %>%
     matrix(nitems, nitems) %>%
     Matrix::nearPD() %$%
     mat
@@ -114,7 +114,7 @@ get_comparison_plot <- function(convolution) {
 
 
 # Generate your dependent samples as before
-nitems <- 80
+nitems <- 80 * 20
 item_names <- get_item_names(nitems)
 sim_data <- get_sim_data(item_names)
 cor(sim_data) %>% round(2)
@@ -124,6 +124,11 @@ pdfs <- lapply(sim_data, function(x) samples_to_pdf(x))
 
 convolution <- Reduce(convolve_pdfs, tail(pdfs, -1), init=pdfs[[1]])
 get_comparison_plot(convolution)
+# The convolution might be implemented wrong - even with tiny
+# correlations, I get a very non-gaussian convolution.
+# TODO: Try changing get_sim_data to use no copula to confirm
+# convergence is quick without dependence.
+
 # pdfs[["convolution"]] <- convolution
 
 
