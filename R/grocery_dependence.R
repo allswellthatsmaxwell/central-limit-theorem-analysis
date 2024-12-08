@@ -4,10 +4,12 @@ library(copula)
 library(tidyr)
 library(dplyr)
 library(tibble)
+library(magrittr)
 
-# Step 1: Define the Gaussian Copula
 
-nitems <- 10
+item_names <- c("chips", "salsa", "beer", "pop", "water",
+                "tacos", "liquor", "napkins", "plates", "cups")
+nitems <- length(item_names)
 rho_matrix <- runif(nitems*nitems) %>%
   matrix(nitems, nitems) %>%
   Matrix::nearPD() %$%
@@ -18,9 +20,9 @@ gauss_cop <- normalCopula(param = rho_matrix[lower.tri(rho_matrix)],
 
 
 # Step 2: Define Marginal Distributions
-# Marginals for chips and dip sales (exponential distributions)
-marginals <- lapply(1:nitems, function(i) list(rate = runif(1)))
-# marginals <- list(list(rate = 0.5), list(rate = 0.3))
+marginals <- lapply(
+  1:nitems, 
+  function(i) list(rate = rgamma(1, shape = 0.5, scale = 2)))
 
 # Step 3: Create the Multivariate Distribution
 # Combine the Gaussian copula with the marginals
@@ -31,19 +33,8 @@ mv_dist <- mvdc(copula = gauss_cop,
 
 # Step 4: Simulate Data
 sim_data <- as.data.frame(rMvdc(1000, mv_dist)) %>% 
-  set_colnames(c("chips", "salsa", "beer", "pop", "water",
-                 "tacos", "liquor", "napkins", "plates", "cups")) %>%
+  set_colnames(item_names) %>%
   as_tibble()
-
-cor(sim_data) %>% round(2)
-
-p <- ggplot(sim_data, aes(x = chips, y = dip)) +
-  geom_point(alpha = 0.6) +
-  labs(title = "Simulated Sales: Chips vs. Dip (Correlated Data)",
-       x = "Chips Sales", 
-       y = "Dip Sales") +
-  theme_minimal()
-ggMarginal(p, type="histogram")
 
 
 long_data <- sim_data %>%
@@ -59,6 +50,12 @@ long_data %>%
   #facet_wrap(~item, ncol=1) +
   theme_minimal()
 
+cor(sim_data) %>% round(2)
+
+display_rhos <- rho_matrix %>% 
+  set_rownames(item_names) %>% 
+  set_colnames(item_names) %>%
+  round(2)
 
 vectors <- lapply(sim_data, identity)
 
